@@ -62,6 +62,7 @@ class User(BaseModel):
     user_type: str
     company_name: Optional[str] = None
     license_number: Optional[str] = None
+    password_hash: Optional[str] = None  # Add password_hash field
     kyc_status: str = "pending"
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

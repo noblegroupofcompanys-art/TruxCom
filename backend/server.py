@@ -442,6 +442,79 @@ class PaymentCreate(BaseModel):
     related_id: str
     stripe_payment_method_id: Optional[str] = None
 
+# Enhanced Instapay System Models
+class EscrowAccount(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    shipment_id: str
+    shipper_id: str
+    carrier_id: str
+    amount: float
+    currency: str = "USD"
+    status: str = "pending"  # pending, funded, released, refunded, disputed
+    funded_at: Optional[datetime] = None
+    released_at: Optional[datetime] = None
+    dispute_reason: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    terms: Dict[str, Any] = {}  # Escrow terms and conditions
+    milestone_conditions: List[Dict] = []  # Conditions for release
+
+class EscrowCreate(BaseModel):
+    shipment_id: str
+    amount: float
+    currency: str = "USD"
+    payment_method: str  # "trux_credit", "stripe"
+    milestone_conditions: List[Dict] = []
+    stripe_payment_method_id: Optional[str] = None
+
+class Invoice(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    invoice_number: str
+    issuer_id: str  # User who created the invoice
+    recipient_id: str  # User who should pay
+    related_type: str  # "shipment", "rental", "storage", "equipment"
+    related_id: str
+    items: List[Dict[str, Any]]  # Invoice line items
+    subtotal: float
+    tax_amount: float = 0.0
+    total_amount: float
+    currency: str = "USD"
+    due_date: datetime
+    status: str = "draft"  # draft, sent, paid, overdue, cancelled
+    payment_terms: str = "Net 30"
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    sent_at: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
+    
+class InvoiceCreate(BaseModel):
+    recipient_id: str
+    related_type: str
+    related_id: str
+    items: List[Dict[str, Any]]
+    currency: str = "USD"
+    due_date: datetime
+    payment_terms: str = "Net 30"
+    notes: Optional[str] = None
+
+class MultiCurrencyRate(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    base_currency: str = "USD"
+    target_currency: str
+    exchange_rate: float
+    last_updated: datetime = Field(default_factory=datetime.utcnow)
+    source: str = "manual"  # manual, api, bank
+
+class MultiCurrencyPayment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    original_amount: float
+    original_currency: str
+    converted_amount: float
+    converted_currency: str
+    exchange_rate: float
+    conversion_fee: float = 0.0
+    payment_id: str  # Reference to main payment
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 # Review Models
 class ReviewCreate(BaseModel):
     related_type: str  # "shipment", "rental", "equipment", "warehouse", "vehicle"

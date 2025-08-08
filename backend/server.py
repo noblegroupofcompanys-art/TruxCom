@@ -442,7 +442,312 @@ class PaymentCreate(BaseModel):
     related_id: str
     stripe_payment_method_id: Optional[str] = None
 
-# Enhanced Instapay System Models
+# Insurance Marketplace Models
+class InsuranceType(str):
+    CARGO = "cargo"
+    FLEET = "fleet"
+    LIABILITY = "liability"
+    EQUIPMENT = "equipment"
+    WAREHOUSE = "warehouse"
+
+class InsuranceProvider(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    company_logo: Optional[str] = None
+    contact_email: str
+    contact_phone: str
+    license_number: str
+    coverage_areas: List[str] = []  # States/regions covered
+    insurance_types: List[str] = []  # Types of insurance offered
+    rating: float = 0.0
+    total_reviews: int = 0
+    active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class InsurancePlan(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    provider_id: str
+    name: str
+    insurance_type: str
+    description: str
+    coverage_details: Dict[str, Any] = {}
+    base_premium: float  # Admin can update this
+    coverage_limits: Dict[str, float] = {}  # Max coverage amounts
+    deductible_options: List[float] = []
+    policy_term: int = 12  # months
+    features: List[str] = []
+    eligibility_criteria: Dict[str, Any] = {}
+    active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class InsuranceQuote(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    plan_id: str
+    insurance_type: str
+    coverage_amount: float
+    premium_amount: float
+    deductible: float
+    policy_details: Dict[str, Any] = {}
+    risk_factors: Dict[str, Any] = {}
+    valid_until: datetime
+    status: str = "pending"  # pending, accepted, rejected, expired
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class InsurancePolicy(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    policy_number: str
+    user_id: str
+    provider_id: str
+    plan_id: str
+    quote_id: str
+    status: str = "active"  # active, expired, cancelled, suspended
+    start_date: datetime
+    end_date: datetime
+    premium_amount: float
+    coverage_amount: float
+    deductible: float
+    payment_frequency: str = "monthly"  # monthly, quarterly, annually
+    policy_documents: List[str] = []
+    claims_history: List[Dict] = []
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class InsuranceClaim(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    policy_id: str
+    user_id: str
+    claim_number: str
+    incident_date: datetime
+    claim_amount: float
+    description: str
+    incident_type: str
+    related_shipment_id: Optional[str] = None
+    supporting_documents: List[str] = []
+    status: str = "submitted"  # submitted, under_review, approved, rejected, paid
+    adjuster_notes: Optional[str] = None
+    settlement_amount: Optional[float] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+# Training Hub Models
+class TrainingCategory(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: str
+    icon: Optional[str] = None
+    display_order: int = 0
+    active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class TrainingCourse(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    description: str
+    category_id: str
+    instructor_name: str
+    instructor_bio: Optional[str] = None
+    course_image: Optional[str] = None
+    difficulty_level: str = "beginner"  # beginner, intermediate, advanced
+    duration_hours: float
+    price: float = 0.0  # Admin can update this
+    currency: str = "USD"
+    course_type: str = "online"  # online, in_person, hybrid
+    prerequisites: List[str] = []
+    learning_objectives: List[str] = []
+    course_outline: List[Dict] = []  # modules and lessons
+    certification_provided: bool = False
+    certification_valid_months: Optional[int] = None
+    language: str = "English"
+    tags: List[str] = []
+    rating: float = 0.0
+    total_enrollments: int = 0
+    active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class CourseModule(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    course_id: str
+    title: str
+    description: str
+    module_order: int
+    content_type: str = "mixed"  # video, document, interactive, quiz, mixed
+    estimated_duration: float  # hours
+    content_items: List[Dict] = []  # videos, documents, quizzes
+    is_mandatory: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class CourseEnrollment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    course_id: str
+    enrollment_date: datetime = Field(default_factory=datetime.utcnow)
+    start_date: Optional[datetime] = None
+    completion_date: Optional[datetime] = None
+    progress_percentage: float = 0.0
+    current_module_id: Optional[str] = None
+    status: str = "enrolled"  # enrolled, in_progress, completed, dropped
+    payment_status: str = "pending"  # pending, paid, refunded
+    certificate_issued: bool = False
+    certificate_url: Optional[str] = None
+    final_score: Optional[float] = None
+
+class CourseProgress(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    enrollment_id: str
+    user_id: str
+    course_id: str
+    module_id: str
+    content_item_id: str
+    completed: bool = False
+    time_spent_minutes: float = 0.0
+    score: Optional[float] = None
+    notes: Optional[str] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+# Advanced Admin Tools Models
+class KYCDocument(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    document_type: str  # "drivers_license", "passport", "business_license", "insurance_certificate"
+    document_url: str
+    document_number: Optional[str] = None
+    expiry_date: Optional[datetime] = None
+    verification_status: str = "pending"  # pending, verified, rejected, expired
+    verification_notes: Optional[str] = None
+    verified_by: Optional[str] = None
+    verified_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class KYCVerification(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    verification_level: str = "basic"  # basic, enhanced, premium
+    overall_status: str = "pending"  # pending, verified, rejected, incomplete
+    identity_verified: bool = False
+    address_verified: bool = False
+    business_verified: bool = False
+    background_check_status: str = "pending"
+    required_documents: List[str] = []
+    submitted_documents: List[str] = []
+    verification_score: float = 0.0
+    risk_level: str = "medium"  # low, medium, high
+    verification_notes: Optional[str] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class DisputeCase(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    case_number: str
+    complainant_id: str
+    respondent_id: str
+    related_type: str  # "shipment", "payment", "insurance", "service"
+    related_id: str
+    dispute_type: str  # "payment", "delivery", "damage", "service_quality", "fraud"
+    title: str
+    description: str
+    evidence_urls: List[str] = []
+    amount_disputed: Optional[float] = None
+    priority: str = "medium"  # low, medium, high, urgent
+    status: str = "open"  # open, under_review, mediation, resolved, closed
+    assigned_to: Optional[str] = None
+    resolution: Optional[str] = None
+    resolution_amount: Optional[float] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    resolved_at: Optional[datetime] = None
+
+class DisputeMessage(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    dispute_id: str
+    sender_id: str
+    sender_type: str  # "complainant", "respondent", "admin", "mediator"
+    message: str
+    attachments: List[str] = []
+    is_internal: bool = False  # Internal admin notes
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class CommissionRule(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    service_type: str  # "freight", "equipment", "warehouse", "insurance", "training"
+    commission_type: str = "percentage"  # percentage, fixed, tiered
+    commission_rate: float  # Percentage or fixed amount
+    minimum_amount: Optional[float] = None
+    maximum_amount: Optional[float] = None
+    tier_rules: List[Dict] = []  # For tiered commission structures
+    user_types: List[str] = []  # Which user types this applies to
+    effective_date: datetime = Field(default_factory=datetime.utcnow)
+    expiry_date: Optional[datetime] = None
+    active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class CommissionTransaction(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    transaction_id: str  # Related to original transaction
+    user_id: str
+    service_type: str
+    base_amount: float
+    commission_rate: float
+    commission_amount: float
+    commission_rule_id: str
+    status: str = "pending"  # pending, paid, withheld, disputed
+    payout_date: Optional[datetime] = None
+    payout_method: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+# Advanced Analytics Models
+class AnalyticsMetric(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    metric_name: str
+    metric_type: str  # "revenue", "volume", "performance", "user_activity"
+    metric_value: float
+    metric_unit: str
+    dimensions: Dict[str, Any] = {}  # Additional categorization
+    date_recorded: datetime = Field(default_factory=datetime.utcnow)
+    time_period: str = "daily"  # hourly, daily, weekly, monthly
+
+class AnalyticsReport(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    report_name: str
+    report_type: str  # "financial", "operational", "user_engagement", "predictive"
+    report_data: Dict[str, Any] = {}
+    parameters: Dict[str, Any] = {}
+    generated_by: str
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    report_period_start: datetime
+    report_period_end: datetime
+    file_url: Optional[str] = None
+
+class PredictiveInsight(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    insight_type: str  # "demand_forecast", "price_prediction", "risk_assessment"
+    prediction_data: Dict[str, Any] = {}
+    confidence_score: float  # 0.0 to 1.0
+    time_horizon: str  # "1_week", "1_month", "3_months", "1_year"
+    model_version: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: datetime
+
+# Admin Pricing Management Models
+class PricingTemplate(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    service_type: str  # "insurance", "training", "commission", "platform_fee"
+    template_name: str
+    pricing_structure: Dict[str, Any] = {}  # Flexible pricing rules
+    currency: str = "USD"
+    active: bool = True
+    created_by: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class DynamicPricing(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    service_id: str  # Related service (course, insurance plan, etc.)
+    service_type: str
+    base_price: float
+    dynamic_factors: Dict[str, float] = {}  # demand, supply, seasonal, etc.
+    current_price: float
+    price_history: List[Dict] = []
+    last_updated: datetime = Field(default_factory=datetime.utcnow)
 class EscrowAccount(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     shipment_id: str

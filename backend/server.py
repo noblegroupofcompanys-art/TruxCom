@@ -648,7 +648,221 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise credentials_exception
     return User(**user)
 
-# Enhanced notification helper
+@api_router.post("/gps/update", response_model=Dict[str, str])
+async def update_gps_location(location_data: GPSLocation, current_user: User = Depends(get_current_user)):
+    """Update GPS location with enhanced tracking features"""
+    if current_user.user_type != UserRole.DRIVER:
+        raise HTTPException(status_code=403, detail="Only drivers can update GPS locations")
+    
+    # Verify the shipment belongs to the driver
+    shipment = await db.shipments.find_one({"id": location_data.shipment_id})
+    if not shipment or shipment.get("carrier_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only update GPS for your assigned shipments")
+    
+    current_location = {
+        "latitude": location_data.latitude,
+        "longitude": location_data.longitude,
+        "timestamp": location_data.timestamp
+    }
+    
+    # Process geofence events
+    geofence_events = await process_geofence_events(
+        location_data.shipment_id, 
+        current_location, 
+        current_user.id
+    )
+    
+    # Check for route deviation
+    await check_route_deviation(location_data.shipment_id, current_location, current_user.id)
+    
+    # Update ETA calculation
+    await update_eta(location_data.shipment_id, current_location)
+    
+    # Prepare enhanced location data
+    location_dict = location_data.dict()
+    location_dict["geofence_events"] = geofence_events
+    
+    # Calculate route deviation if planned route exists
+    if shipment.get('planned_route'):
+        deviation = calculate_route_deviation(
+            location_data.latitude, location_data.longitude, shipment['planned_route']
+        )
+        location_dict["route_deviation_distance"] = deviation
+    
+    # Save GPS location
+    await db.gps_locations.insert_one(location_dict)
+    
+    # Update shipment's current location and progress
+    route_progress = calculate_route_progress(location_data, shipment)
+    await db.shipments.update_one(
+        {"id": location_data.shipment_id},
+        {
+            "$set": {
+                "current_location": current_location,
+                "route_progress": route_progress,
+                "last_updated": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Send real-time update via WebSocket
+    await manager.send_personal_message({
+        "type": "gps_update",
+        "data": {
+            "shipment_id": location_data.shipment_id,
+            "location": current_location,
+            "route_progress": route_progress,
+            "geofence_events": geofence_events,
+            "route_deviation": location_dict.get("route_deviation_distance", 0)
+        }
+    }, shipment["shipper_id"])
+    
+    return {"status": "success", "message": "GPS location updated with enhanced tracking"}
+
+@api_router.post("/shipments/{shipment_id}/geofences", response_model=Geofence)
+async def create_geofence(shipment_id: str, geofence_create: GeofenceCreate, current_user: User = Depends(get_current_user)):
+    """Create a geofence for a shipment"""
+    # Verify shipment ownership
+    shipment = await db.shipments.find_one({"id": shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    if shipment["shipper_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only create geofences for your shipments")
+    
+    geofence_dict = geofence_create.dict()
+    geofence_dict["shipment_id"] = shipment_id
+    
+    geofence = Geofence(**geofence_dict)
+    await db.geofences.insert_one(geofence.dict())
+    
+    return geofence
+
+@api_router.get("/shipments/{shipment_id}/geofences", response_model=List[Geofence])
+async def get_shipment_geofences(shipment_id: str, current_user: User = Depends(get_current_user)):
+    """Get all geofences for a shipment"""
+    shipment = await db.shipments.find_one({"id": shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    # Check if user has access to this shipment
+    if shipment["shipper_id"] != current_user.id and shipment.get("carrier_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="You don't have access to this shipment")
+    
+    geofences = await db.geofences.find({"shipment_id": shipment_id}).to_list(100)
+    return [Geofence(**geofence) for geofence in geofences]
+
+@api_router.get("/shipments/{shipment_id}/geofence-events", response_model=List[GeofenceEvent])
+async def get_geofence_events(shipment_id: str, current_user: User = Depends(get_current_user)):
+    """Get geofence events for a shipment"""
+    shipment = await db.shipments.find_one({"id": shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    if shipment["shipper_id"] != current_user.id and shipment.get("carrier_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="You don't have access to this shipment")
+    
+    events = await db.geofence_events.find({"shipment_id": shipment_id}).sort("timestamp", -1).to_list(100)
+    return [GeofenceEvent(**event) for event in events]
+
+@api_router.get("/shipments/{shipment_id}/route-deviations", response_model=List[RouteDeviation])
+async def get_route_deviations(shipment_id: str, current_user: User = Depends(get_current_user)):
+    """Get route deviations for a shipment"""
+    shipment = await db.shipments.find_one({"id": shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    if shipment["shipper_id"] != current_user.id and shipment.get("carrier_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="You don't have access to this shipment")
+    
+    deviations = await db.route_deviations.find({"shipment_id": shipment_id}).sort("created_at", -1).to_list(100)
+    return [RouteDeviation(**deviation) for deviation in deviations]
+
+@api_router.post("/shipments/{shipment_id}/route-deviations/{deviation_id}/acknowledge")
+async def acknowledge_route_deviation(shipment_id: str, deviation_id: str, current_user: User = Depends(get_current_user)):
+    """Acknowledge a route deviation alert"""
+    shipment = await db.shipments.find_one({"id": shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    if shipment["shipper_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the shipper can acknowledge route deviations")
+    
+    await db.route_deviations.update_one(
+        {"id": deviation_id, "shipment_id": shipment_id},
+        {"$set": {"acknowledged": True, "acknowledged_at": datetime.utcnow()}}
+    )
+    
+    return {"status": "success", "message": "Route deviation acknowledged"}
+
+@api_router.get("/shipments/{shipment_id}/eta", response_model=ETACalculation)
+async def get_shipment_eta(shipment_id: str, current_user: User = Depends(get_current_user)):
+    """Get current ETA calculation for a shipment"""
+    shipment = await db.shipments.find_one({"id": shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    if shipment["shipper_id"] != current_user.id and shipment.get("carrier_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="You don't have access to this shipment")
+    
+    eta_calc = await db.eta_calculations.find_one({"shipment_id": shipment_id})
+    if not eta_calc:
+        raise HTTPException(status_code=404, detail="ETA calculation not available")
+    
+    return ETACalculation(**eta_calc)
+
+def calculate_route_progress(location_data: GPSLocation, shipment: Dict) -> float:
+    """Calculate route progress based on current location"""
+    # Get origin and destination coordinates
+    origin_coords = get_city_coordinates(shipment['origin_address'])
+    dest_coords = get_city_coordinates(shipment['destination_address'])
+    
+    # Calculate total route distance
+    total_distance = haversine_distance(
+        origin_coords['latitude'], origin_coords['longitude'],
+        dest_coords['latitude'], dest_coords['longitude']
+    )
+    
+    # Calculate distance from origin to current location
+    traveled_distance = haversine_distance(
+        origin_coords['latitude'], origin_coords['longitude'],
+        location_data.latitude, location_data.longitude
+    )
+    
+    # Calculate progress as percentage
+    if total_distance > 0:
+        progress = min(1.0, traveled_distance / total_distance)
+    else:
+        progress = 0.0
+    
+    return progress
+
+def calculate_route_optimization(origin: str, destination: str) -> Dict[str, float]:
+    """Calculate optimized route metrics using real distance calculations"""
+    origin_coords = get_city_coordinates(origin)
+    dest_coords = get_city_coordinates(destination)
+    
+    if origin_coords['latitude'] == 0 or dest_coords['latitude'] == 0:
+        # Fallback for unknown cities
+        return {"distance": 500, "duration": 8, "fuel_cost": 65}
+    
+    # Calculate distance in km
+    distance_km = haversine_distance(
+        origin_coords['latitude'], origin_coords['longitude'],
+        dest_coords['latitude'], dest_coords['longitude']
+    ) / 1000
+    
+    # Estimate duration (assuming average speed of 65 km/h)
+    duration_hours = distance_km / 65
+    
+    # Estimate fuel cost (assuming $0.12 per km)
+    fuel_cost = distance_km * 0.12
+    
+    return {
+        "distance": round(distance_km, 2),
+        "duration": round(duration_hours, 2),
+        "fuel_cost": round(fuel_cost, 2)
+    }
 async def create_notification(user_id: str, notification_type: str, title: str, message: str, 
                              data: Dict = {}, priority: str = "normal", channels: List[str] = ["in_app"]):
     """Create and send a notification to a user"""

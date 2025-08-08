@@ -694,6 +694,603 @@ class TruxComAPITester:
             headers={"Authorization": f"Bearer {self.shipper_token}"}
         )
 
+    def test_insurance_marketplace(self):
+        """Test Insurance Marketplace features"""
+        print("\n" + "="*50)
+        print("TESTING INSURANCE MARKETPLACE")
+        print("="*50)
+        
+        if not self.shipper_token:
+            print("❌ Skipping insurance tests - missing shipper token")
+            return
+        
+        # Test get insurance providers
+        success, providers_response = self.run_test(
+            "Get Insurance Providers",
+            "GET",
+            "insurance/providers",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test get insurance plans
+        success, plans_response = self.run_test(
+            "Get Insurance Plans",
+            "GET",
+            "insurance/plans",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test get insurance plans with filtering
+        self.run_test(
+            "Get Insurance Plans with Filter",
+            "GET",
+            "insurance/plans?insurance_type=cargo&max_premium=500",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test generate insurance quote
+        quote_data = {
+            "plan_id": "test-plan-id",
+            "coverage_amount": 100000.0,
+            "deductible": 1000.0,
+            "risk_factors": {
+                "years_experience": 5,
+                "vehicle_age": 3,
+                "high_risk_routes": False,
+                "previous_claims": 0
+            }
+        }
+        
+        success, quote_response = self.run_test(
+            "Generate Insurance Quote",
+            "POST",
+            "insurance/quote",
+            200,
+            data=quote_data,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        quote_id = None
+        if success and 'id' in quote_response:
+            quote_id = quote_response['id']
+            print(f"   Quote generated with ID: {quote_id}")
+        
+        # Test purchase insurance policy
+        if quote_id:
+            purchase_data = {
+                "payment_method": "trux_credit",
+                "auto_renew": True
+            }
+            
+            success, policy_response = self.run_test(
+                "Purchase Insurance Policy",
+                "POST",
+                f"insurance/purchase/{quote_id}",
+                200,
+                data=purchase_data,
+                headers={"Authorization": f"Bearer {self.shipper_token}"}
+            )
+            
+            if success and 'id' in policy_response:
+                policy_id = policy_response['id']
+                print(f"   Policy purchased with ID: {policy_id}")
+        
+        # Test get my policies
+        self.run_test(
+            "Get My Insurance Policies",
+            "GET",
+            "insurance/my-policies",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test file insurance claim
+        claim_data = {
+            "policy_id": "test-policy-id",
+            "incident_date": datetime.now().isoformat(),
+            "claim_amount": 5000.0,
+            "description": "Cargo damage during transport - electronics damaged by water",
+            "incident_type": "cargo_damage",
+            "related_shipment_id": self.test_shipment_id,
+            "supporting_documents": ["damage_photos.jpg", "police_report.pdf"]
+        }
+        
+        success, claim_response = self.run_test(
+            "File Insurance Claim",
+            "POST",
+            "insurance/claim",
+            200,
+            data=claim_data,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        if success and 'id' in claim_response:
+            print(f"   Claim filed with ID: {claim_response['id']}")
+
+    def test_training_hub(self):
+        """Test Training Hub features"""
+        print("\n" + "="*50)
+        print("TESTING TRAINING HUB")
+        print("="*50)
+        
+        if not self.driver_token:
+            print("❌ Skipping training tests - missing driver token")
+            return
+        
+        # Test get training categories
+        success, categories_response = self.run_test(
+            "Get Training Categories",
+            "GET",
+            "training/categories",
+            200,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        # Test get training courses
+        success, courses_response = self.run_test(
+            "Get Training Courses",
+            "GET",
+            "training/courses",
+            200,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        # Test get courses with filtering
+        self.run_test(
+            "Get Courses with Filter",
+            "GET",
+            "training/courses?category_id=safety&difficulty=beginner&max_price=100",
+            200,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        # Test get specific course
+        test_course_id = "test-course-id"
+        self.run_test(
+            "Get Specific Course",
+            "GET",
+            f"training/courses/{test_course_id}",
+            200,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        # Test course enrollment
+        enrollment_data = {
+            "payment_method": "trux_credit"
+        }
+        
+        success, enrollment_response = self.run_test(
+            "Enroll in Course",
+            "POST",
+            f"training/enroll/{test_course_id}",
+            200,
+            data=enrollment_data,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        enrollment_id = None
+        if success and 'id' in enrollment_response:
+            enrollment_id = enrollment_response['id']
+            print(f"   Enrolled with ID: {enrollment_id}")
+        
+        # Test get my enrollments
+        self.run_test(
+            "Get My Enrollments",
+            "GET",
+            "training/my-enrollments",
+            200,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        # Test update course progress
+        if enrollment_id:
+            progress_data = {
+                "module_id": "test-module-id",
+                "content_item_id": "test-content-id",
+                "completed": True,
+                "time_spent_minutes": 45.0,
+                "score": 85.0,
+                "notes": "Completed safety training module"
+            }
+            
+            self.run_test(
+                "Update Course Progress",
+                "POST",
+                f"training/progress/{enrollment_id}",
+                200,
+                data=progress_data,
+                headers={"Authorization": f"Bearer {self.driver_token}"}
+            )
+        
+        # Test get course certificate
+        if enrollment_id:
+            self.run_test(
+                "Get Course Certificate",
+                "GET",
+                f"training/certificates/{enrollment_id}",
+                200,
+                headers={"Authorization": f"Bearer {self.driver_token}"}
+            )
+
+    def test_admin_tools(self):
+        """Test Advanced Admin Tools features"""
+        print("\n" + "="*50)
+        print("TESTING ADVANCED ADMIN TOOLS")
+        print("="*50)
+        
+        # Create admin user for testing
+        admin_data = {
+            "email": f"admin_{datetime.now().strftime('%H%M%S')}@test.com",
+            "password": "AdminPass123!",
+            "phone_number": "+1234567892",
+            "user_type": "admin",
+            "company_name": "TruxCom Admin"
+        }
+        
+        success, admin_response = self.run_test(
+            "Create Admin User",
+            "POST",
+            "auth/register",
+            200,
+            data=admin_data
+        )
+        
+        admin_token = None
+        admin_user_id = None
+        if success and 'access_token' in admin_response:
+            admin_token = admin_response['access_token']
+            admin_user_id = admin_response.get('user_id')
+            print(f"   Admin token obtained: {admin_token[:20]}...")
+        
+        if not admin_token:
+            print("❌ Skipping admin tests - no admin token")
+            return
+        
+        # Test KYC document upload
+        kyc_upload_data = {
+            "document_type": "drivers_license",
+            "document_url": "https://example.com/license.jpg",
+            "document_number": "DL123456789",
+            "expiry_date": (datetime.now() + timedelta(days=365)).isoformat()
+        }
+        
+        success, kyc_response = self.run_test(
+            "Upload KYC Document",
+            "POST",
+            "admin/kyc/upload-document",
+            200,
+            data=kyc_upload_data,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        # Test get KYC status
+        self.run_test(
+            "Get KYC Status",
+            "GET",
+            "admin/kyc/status",
+            200,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        # Test admin KYC verification
+        if self.driver_user and admin_token:
+            verify_data = {
+                "verification_status": "verified",
+                "verification_notes": "All documents verified successfully",
+                "verification_level": "enhanced"
+            }
+            
+            driver_user_id = self.driver_user.get('user_id', 'test-driver')
+            self.run_test(
+                "Admin KYC Verification",
+                "POST",
+                f"admin/kyc/verify/{driver_user_id}",
+                200,
+                data=verify_data,
+                headers={"Authorization": f"Bearer {admin_token}"}
+            )
+        
+        # Test create dispute case
+        dispute_data = {
+            "respondent_id": self.driver_user.get('user_id', 'test-driver') if self.driver_user else "test-driver",
+            "related_type": "shipment",
+            "related_id": self.test_shipment_id or "test-shipment",
+            "dispute_type": "payment",
+            "title": "Payment dispute for shipment services",
+            "description": "Driver claims payment was not received for completed shipment",
+            "amount_disputed": 2500.0,
+            "evidence_urls": ["receipt.pdf", "communication.png"]
+        }
+        
+        success, dispute_response = self.run_test(
+            "Create Dispute Case",
+            "POST",
+            "admin/disputes/create",
+            200,
+            data=dispute_data,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        dispute_id = None
+        if success and 'id' in dispute_response:
+            dispute_id = dispute_response['id']
+            print(f"   Dispute created with ID: {dispute_id}")
+        
+        # Test get my dispute cases
+        self.run_test(
+            "Get My Dispute Cases",
+            "GET",
+            "admin/disputes/my-cases",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test add dispute message
+        if dispute_id:
+            message_data = {
+                "message": "I have additional evidence to support this dispute case",
+                "attachments": ["additional_evidence.pdf"],
+                "is_internal": False
+            }
+            
+            self.run_test(
+                "Add Dispute Message",
+                "POST",
+                f"admin/disputes/{dispute_id}/message",
+                200,
+                data=message_data,
+                headers={"Authorization": f"Bearer {self.shipper_token}"}
+            )
+        
+        # Test get commission rules
+        if admin_token:
+            self.run_test(
+                "Get Commission Rules",
+                "GET",
+                "admin/commission/rules",
+                200,
+                headers={"Authorization": f"Bearer {admin_token}"}
+            )
+        
+        # Test calculate commission
+        if admin_token:
+            commission_data = {
+                "transaction_amount": 2500.0,
+                "service_type": "freight",
+                "user_type": "driver"
+            }
+            
+            self.run_test(
+                "Calculate Commission",
+                "POST",
+                "admin/commission/calculate",
+                200,
+                data=commission_data,
+                headers={"Authorization": f"Bearer {admin_token}"}
+            )
+
+    def test_analytics_system(self):
+        """Test Advanced Analytics System features"""
+        print("\n" + "="*50)
+        print("TESTING ADVANCED ANALYTICS SYSTEM")
+        print("="*50)
+        
+        # Create admin user for analytics testing
+        admin_data = {
+            "email": f"analytics_admin_{datetime.now().strftime('%H%M%S')}@test.com",
+            "password": "AdminPass123!",
+            "phone_number": "+1234567893",
+            "user_type": "admin",
+            "company_name": "TruxCom Analytics"
+        }
+        
+        success, admin_response = self.run_test(
+            "Create Analytics Admin User",
+            "POST",
+            "auth/register",
+            200,
+            data=admin_data
+        )
+        
+        admin_token = None
+        if success and 'access_token' in admin_response:
+            admin_token = admin_response['access_token']
+            print(f"   Analytics admin token obtained: {admin_token[:20]}...")
+        
+        if not admin_token:
+            print("❌ Skipping analytics tests - no admin token")
+            return
+        
+        # Test analytics dashboard
+        self.run_test(
+            "Get Analytics Dashboard",
+            "GET",
+            "analytics/dashboard",
+            200,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        
+        # Test analytics dashboard with date range
+        start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        self.run_test(
+            "Get Analytics Dashboard with Date Range",
+            "GET",
+            f"analytics/dashboard?start_date={start_date}&end_date={end_date}",
+            200,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        
+        # Test predictive insights
+        insight_types = ["demand_forecast", "price_prediction", "risk_assessment"]
+        
+        for insight_type in insight_types:
+            self.run_test(
+                f"Get Predictive Insights - {insight_type}",
+                "GET",
+                f"analytics/predictive/{insight_type}",
+                200,
+                headers={"Authorization": f"Bearer {admin_token}"}
+            )
+        
+        # Test predictive insights with parameters
+        self.run_test(
+            "Get Predictive Insights with Parameters",
+            "GET",
+            "analytics/predictive/demand_forecast?time_horizon=1_month&region=northeast",
+            200,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        
+        # Test generate analytics report
+        report_data = {
+            "report_type": "financial",
+            "report_period_start": (datetime.now() - timedelta(days=30)).isoformat(),
+            "report_period_end": datetime.now().isoformat(),
+            "parameters": {
+                "include_revenue": True,
+                "include_costs": True,
+                "breakdown_by_service": True
+            }
+        }
+        
+        success, report_response = self.run_test(
+            "Generate Analytics Report",
+            "POST",
+            "analytics/reports/generate",
+            200,
+            data=report_data,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        
+        if success and 'id' in report_response:
+            print(f"   Report generated with ID: {report_response['id']}")
+
+    def test_pricing_management(self):
+        """Test Admin Pricing Management features"""
+        print("\n" + "="*50)
+        print("TESTING ADMIN PRICING MANAGEMENT")
+        print("="*50)
+        
+        # Create admin user for pricing testing
+        admin_data = {
+            "email": f"pricing_admin_{datetime.now().strftime('%H%M%S')}@test.com",
+            "password": "AdminPass123!",
+            "phone_number": "+1234567894",
+            "user_type": "admin",
+            "company_name": "TruxCom Pricing"
+        }
+        
+        success, admin_response = self.run_test(
+            "Create Pricing Admin User",
+            "POST",
+            "auth/register",
+            200,
+            data=admin_data
+        )
+        
+        admin_token = None
+        if success and 'access_token' in admin_response:
+            admin_token = admin_response['access_token']
+            print(f"   Pricing admin token obtained: {admin_token[:20]}...")
+        
+        if not admin_token:
+            print("❌ Skipping pricing tests - no admin token")
+            return
+        
+        # Test get pricing templates
+        self.run_test(
+            "Get Pricing Templates",
+            "GET",
+            "admin/pricing/templates",
+            200,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        
+        # Test create pricing template
+        template_data = {
+            "service_type": "insurance",
+            "template_name": "Standard Insurance Pricing",
+            "pricing_structure": {
+                "base_rate": 100.0,
+                "risk_multipliers": {
+                    "low_risk": 0.8,
+                    "medium_risk": 1.0,
+                    "high_risk": 1.5
+                },
+                "coverage_tiers": {
+                    "basic": 1.0,
+                    "premium": 1.5,
+                    "enterprise": 2.0
+                }
+            },
+            "currency": "USD"
+        }
+        
+        success, template_response = self.run_test(
+            "Create Pricing Template",
+            "POST",
+            "admin/pricing/templates",
+            200,
+            data=template_data,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        
+        if success and 'id' in template_response:
+            print(f"   Pricing template created with ID: {template_response['id']}")
+        
+        # Test update service pricing
+        service_types = ["insurance", "training", "commission"]
+        
+        for service_type in service_types:
+            pricing_update_data = {
+                "base_price": 150.0,
+                "pricing_rules": {
+                    "volume_discount": {
+                        "threshold": 10,
+                        "discount_percentage": 10.0
+                    },
+                    "seasonal_adjustment": {
+                        "peak_season_multiplier": 1.2,
+                        "off_season_multiplier": 0.9
+                    }
+                },
+                "effective_date": datetime.now().isoformat()
+            }
+            
+            self.run_test(
+                f"Update {service_type.title()} Service Pricing",
+                "PUT",
+                f"admin/pricing/update/{service_type}",
+                200,
+                data=pricing_update_data,
+                headers={"Authorization": f"Bearer {admin_token}"}
+            )
+        
+        # Test get dynamic pricing
+        test_service_id = "test-service-123"
+        
+        self.run_test(
+            "Get Dynamic Pricing",
+            "GET",
+            f"admin/pricing/dynamic/{test_service_id}",
+            200,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        
+        # Test dynamic pricing with factors
+        self.run_test(
+            "Get Dynamic Pricing with Factors",
+            "GET",
+            f"admin/pricing/dynamic/{test_service_id}?demand_factor=1.2&supply_factor=0.8&seasonal_factor=1.1",
+            200,
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+
     def run_all_tests(self):
         """Run all test suites"""
         print("🚀 Starting TruxCom API Testing Suite")

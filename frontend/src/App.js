@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './components/ui/dialog';
 import { Progress } from './components/ui/progress';
 import { toast } from 'sonner';
-import { Truck, Package, MapPin, Calendar, DollarSign, User, Bell, LogOut, Plus, Eye, CheckCircle, MessageSquare, Navigation, Clock, Target, Wallet, Shield, FileText, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Truck, Package, MapPin, Calendar, DollarSign, User, Bell, LogOut, Plus, Eye, CheckCircle, MessageSquare, Navigation, Clock, Target, Wallet, Shield, FileText, AlertTriangle, TrendingUp, BookOpen } from 'lucide-react';
 
 // Import new components
 import MapView from './components/MapView';

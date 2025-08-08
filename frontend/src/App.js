@@ -326,7 +326,7 @@ function App() {
 
   const handleCreateBid = async (shipmentId) => {
     if (!bidForm.bid_amount || !bidForm.estimated_pickup || !bidForm.estimated_delivery) {
-      alert('Please fill all required fields');
+      toast.error('Please fill all required fields');
       return;
     }
     
@@ -355,9 +355,9 @@ function App() {
       });
       
       fetchDashboardData();
-      alert('Bid submitted successfully!');
+      toast.success('Bid submitted successfully!');
     } catch (error) {
-      alert(error.response?.data?.detail || 'Failed to submit bid');
+      toast.error(error.response?.data?.detail || 'Failed to submit bid');
     } finally {
       setIsLoading(false);
     }

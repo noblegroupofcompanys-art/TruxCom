@@ -1528,6 +1528,444 @@ async def convert_currency(amount: float, from_currency: str, to_currency: str) 
         "conversion_fee": conversion_fee
     }
 
+# Platform Enhancement Utility Functions
+
+# Insurance Marketplace Functions
+async def calculate_insurance_quote(user_id: str, plan_id: str, coverage_amount: float, risk_factors: Dict = None) -> Dict:
+    """Calculate insurance quote based on plan and risk factors"""
+    plan = await db.insurance_plans.find_one({"id": plan_id})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Insurance plan not found")
+    
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Base premium calculation
+    base_premium = plan["base_premium"]
+    
+    # Risk factor adjustments
+    risk_multiplier = 1.0
+    if risk_factors:
+        # Driver experience factor
+        if risk_factors.get("years_experience", 5) < 2:
+            risk_multiplier += 0.3
+        elif risk_factors.get("years_experience", 5) > 10:
+            risk_multiplier -= 0.1
+        
+        # Vehicle age factor
+        vehicle_age = risk_factors.get("vehicle_age", 5)
+        if vehicle_age > 10:
+            risk_multiplier += 0.2
+        elif vehicle_age < 3:
+            risk_multiplier -= 0.05
+        
+        # Route risk factor
+        if risk_factors.get("high_risk_routes", False):
+            risk_multiplier += 0.25
+        
+        # Claims history
+        previous_claims = risk_factors.get("previous_claims", 0)
+        risk_multiplier += (previous_claims * 0.15)
+    
+    # Coverage amount adjustment
+    coverage_multiplier = coverage_amount / 100000  # Base coverage of $100k
+    
+    # Calculate final premium
+    final_premium = base_premium * risk_multiplier * coverage_multiplier
+    
+    # Apply minimum and maximum limits
+    final_premium = max(final_premium, base_premium * 0.5)  # Minimum 50% of base
+    final_premium = min(final_premium, base_premium * 3.0)  # Maximum 300% of base
+    
+    return {
+        "base_premium": base_premium,
+        "risk_multiplier": risk_multiplier,
+        "coverage_multiplier": coverage_multiplier,
+        "final_premium": round(final_premium, 2),
+        "annual_premium": round(final_premium * 12, 2),
+        "risk_factors_applied": risk_factors or {}
+    }
+
+async def generate_insurance_policy_number() -> str:
+    """Generate unique insurance policy number"""
+    timestamp = datetime.utcnow().strftime("%Y%m%d")
+    random_suffix = ''.join(random.choices('0123456789', k=6))
+    return f"TRX-INS-{timestamp}-{random_suffix}"
+
+# Training Hub Functions
+async def calculate_course_progress(enrollment_id: str) -> float:
+    """Calculate course completion progress"""
+    enrollment = await db.course_enrollments.find_one({"id": enrollment_id})
+    if not enrollment:
+        return 0.0
+    
+    course = await db.training_courses.find_one({"id": enrollment["course_id"]})
+    if not course:
+        return 0.0
+    
+    # Get all modules for the course
+    modules = await db.course_modules.find({"course_id": enrollment["course_id"]}).to_list(100)
+    if not modules:
+        return 0.0
+    
+    # Get completed progress items
+    completed_progress = await db.course_progress.find({
+        "enrollment_id": enrollment_id,
+        "completed": True
+    }).to_list(1000)
+    
+    # Calculate total content items
+    total_items = 0
+    for module in modules:
+        total_items += len(module.get("content_items", []))
+    
+    if total_items == 0:
+        return 0.0
+    
+    # Calculate progress percentage
+    completed_items = len(completed_progress)
+    progress_percentage = (completed_items / total_items) * 100
+    
+    # Update enrollment progress
+    await db.course_enrollments.update_one(
+        {"id": enrollment_id},
+        {"$set": {"progress_percentage": round(progress_percentage, 2)}}
+    )
+    
+    return round(progress_percentage, 2)
+
+async def generate_course_certificate(enrollment_id: str) -> str:
+    """Generate course completion certificate"""
+    enrollment = await db.course_enrollments.find_one({"id": enrollment_id})
+    if not enrollment:
+        return ""
+    
+    course = await db.training_courses.find_one({"id": enrollment["course_id"]})
+    user = await db.users.find_one({"id": enrollment["user_id"]})
+    
+    if not course or not user:
+        return ""
+    
+    # Generate certificate data
+    certificate_data = {
+        "certificate_id": str(uuid.uuid4()),
+        "user_name": f"{user['first_name']} {user['last_name']}",
+        "course_title": course["title"],
+        "completion_date": datetime.utcnow().strftime("%B %d, %Y"),
+        "instructor": course.get("instructor_name", "TruxCom Training"),
+        "duration": f"{course['duration_hours']} hours",
+        "certificate_url": f"/certificates/{enrollment_id}.pdf"
+    }
+    
+    # In a real implementation, you would generate a PDF certificate here
+    # For now, we'll just return the certificate URL
+    certificate_url = f"/api/certificates/{enrollment_id}"
+    
+    # Update enrollment with certificate info
+    await db.course_enrollments.update_one(
+        {"id": enrollment_id},
+        {
+            "$set": {
+                "certificate_issued": True,
+                "certificate_url": certificate_url,
+                "completion_date": datetime.utcnow()
+            }
+        }
+    )
+    
+    return certificate_url
+
+# Admin Tools Functions
+async def calculate_kyc_score(user_id: str) -> float:
+    """Calculate KYC verification score"""
+    documents = await db.kyc_documents.find({"user_id": user_id}).to_list(100)
+    
+    score = 0.0
+    max_score = 100.0
+    
+    # Document verification scores
+    document_scores = {
+        "drivers_license": 25.0,
+        "passport": 30.0,
+        "business_license": 20.0,
+        "insurance_certificate": 15.0,
+        "bank_statement": 10.0
+    }
+    
+    for doc in documents:
+        if doc["verification_status"] == "verified":
+            score += document_scores.get(doc["document_type"], 5.0)
+    
+    # Additional verification factors
+    user = await db.users.find_one({"id": user_id})
+    if user:
+        # Email verification
+        if user.get("email_verified", False):
+            score += 5.0
+        
+        # Phone verification
+        if user.get("phone_verified", False):
+            score += 5.0
+        
+        # Account age (bonus for older accounts)
+        account_age_days = (datetime.utcnow() - user["created_at"]).days
+        if account_age_days > 30:
+            score += 5.0
+        if account_age_days > 90:
+            score += 5.0
+    
+    return min(score, max_score)
+
+async def auto_assign_dispute_priority(dispute_case: DisputeCase) -> str:
+    """Automatically assign dispute priority based on case details"""
+    priority = "medium"  # default
+    
+    # High priority conditions
+    if dispute_case.amount_disputed and dispute_case.amount_disputed > 10000:
+        priority = "high"
+    elif dispute_case.dispute_type in ["fraud", "safety"]:
+        priority = "urgent"
+    elif dispute_case.dispute_type in ["payment", "delivery"]:
+        priority = "high"
+    
+    # Check user history for repeat complainants
+    user_disputes = await db.dispute_cases.count_documents({
+        "complainant_id": dispute_case.complainant_id,
+        "status": {"$in": ["open", "under_review"]}
+    })
+    
+    if user_disputes > 2:
+        priority = "high"
+    
+    return priority
+
+async def calculate_commission(transaction_amount: float, service_type: str, user_type: str) -> Dict:
+    """Calculate commission based on rules"""
+    # Get applicable commission rule
+    commission_rule = await db.commission_rules.find_one({
+        "service_type": service_type,
+        "user_types": {"$in": [user_type]},
+        "active": True,
+        "effective_date": {"$lte": datetime.utcnow()},
+        "$or": [
+            {"expiry_date": {"$exists": False}},
+            {"expiry_date": {"$gte": datetime.utcnow()}}
+        ]
+    })
+    
+    if not commission_rule:
+        # Default commission rates
+        default_rates = {
+            "freight": 5.0,
+            "equipment": 3.0,
+            "warehouse": 4.0,
+            "insurance": 8.0,
+            "training": 10.0
+        }
+        commission_rate = default_rates.get(service_type, 5.0)
+        commission_amount = transaction_amount * (commission_rate / 100)
+    else:
+        commission_rate = commission_rule["commission_rate"]
+        
+        if commission_rule["commission_type"] == "percentage":
+            commission_amount = transaction_amount * (commission_rate / 100)
+        else:  # fixed
+            commission_amount = commission_rate
+        
+        # Apply min/max limits
+        if commission_rule.get("minimum_amount"):
+            commission_amount = max(commission_amount, commission_rule["minimum_amount"])
+        if commission_rule.get("maximum_amount"):
+            commission_amount = min(commission_amount, commission_rule["maximum_amount"])
+    
+    return {
+        "commission_rate": commission_rate,
+        "commission_amount": round(commission_amount, 2),
+        "rule_id": commission_rule["id"] if commission_rule else None
+    }
+
+# Analytics Functions
+async def generate_revenue_analytics(period: str = "monthly", start_date: datetime = None, end_date: datetime = None) -> Dict:
+    """Generate revenue analytics report"""
+    if not start_date:
+        start_date = datetime.utcnow() - timedelta(days=30)
+    if not end_date:
+        end_date = datetime.utcnow()
+    
+    # Aggregate revenue from different sources
+    revenue_sources = {
+        "freight": 0.0,
+        "equipment": 0.0,
+        "warehouse": 0.0,
+        "insurance": 0.0,
+        "training": 0.0,
+        "commission": 0.0
+    }
+    
+    # Get commission transactions
+    commission_transactions = await db.commission_transactions.find({
+        "created_at": {"$gte": start_date, "$lte": end_date},
+        "status": "paid"
+    }).to_list(1000)
+    
+    for transaction in commission_transactions:
+        service_type = transaction.get("service_type", "freight")
+        revenue_sources[service_type] += transaction.get("commission_amount", 0)
+    
+    # Get training revenue
+    training_enrollments = await db.course_enrollments.find({
+        "enrollment_date": {"$gte": start_date, "$lte": end_date},
+        "payment_status": "paid"
+    }).to_list(1000)
+    
+    for enrollment in training_enrollments:
+        course = await db.training_courses.find_one({"id": enrollment["course_id"]})
+        if course:
+            revenue_sources["training"] += course.get("price", 0)
+    
+    # Calculate totals
+    total_revenue = sum(revenue_sources.values())
+    
+    return {
+        "period": period,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "revenue_by_source": revenue_sources,
+        "total_revenue": round(total_revenue, 2),
+        "growth_rate": 0.0,  # Would calculate based on previous period
+        "generated_at": datetime.utcnow().isoformat()
+    }
+
+async def generate_predictive_insights(insight_type: str) -> Dict:
+    """Generate AI-powered predictive insights"""
+    insights = {}
+    
+    if insight_type == "demand_forecast":
+        # Mock demand forecasting (in production, use ML models)
+        current_date = datetime.utcnow()
+        forecast_data = []
+        
+        for i in range(7):  # 7-day forecast
+            forecast_date = current_date + timedelta(days=i)
+            # Mock seasonal and trend factors
+            base_demand = 100
+            seasonal_factor = 1.2 if forecast_date.weekday() < 5 else 0.8  # Higher weekday demand
+            trend_factor = 1.05  # 5% growth trend
+            
+            forecasted_demand = base_demand * seasonal_factor * trend_factor * random.uniform(0.9, 1.1)
+            
+            forecast_data.append({
+                "date": forecast_date.strftime("%Y-%m-%d"),
+                "forecasted_shipments": round(forecasted_demand),
+                "confidence": random.uniform(0.75, 0.95)
+            })
+        
+        insights = {
+            "forecast_period": "7_days",
+            "forecast_data": forecast_data,
+            "key_insights": [
+                "Higher demand expected on weekdays",
+                "Potential 15% increase in freight volume next week",
+                "Peak demand expected on Tuesday and Wednesday"
+            ]
+        }
+    
+    elif insight_type == "price_prediction":
+        # Mock price prediction
+        insights = {
+            "service_predictions": {
+                "freight": {
+                    "current_avg_price": 2500.0,
+                    "predicted_price_7d": 2650.0,
+                    "predicted_price_30d": 2750.0,
+                    "confidence": 0.82,
+                    "factors": ["fuel_prices", "demand_increase", "seasonal"]
+                },
+                "insurance": {
+                    "current_avg_premium": 850.0,
+                    "predicted_premium_7d": 820.0,
+                    "predicted_premium_30d": 800.0,
+                    "confidence": 0.78,
+                    "factors": ["market_competition", "claims_decrease"]
+                }
+            }
+        }
+    
+    elif insight_type == "risk_assessment":
+        # Mock risk assessment
+        insights = {
+            "overall_risk_score": 3.2,  # 1-5 scale
+            "risk_factors": {
+                "payment_defaults": 0.03,  # 3% default rate
+                "insurance_claims": 0.08,  # 8% claim rate
+                "delivery_delays": 0.12,   # 12% delay rate
+                "user_complaints": 0.05    # 5% complaint rate
+            },
+            "recommendations": [
+                "Implement stricter KYC for high-risk users",
+                "Consider requiring insurance for shipments > $10k",
+                "Monitor routes with high delay rates"
+            ]
+        }
+    
+    return insights
+
+async def update_dynamic_pricing(service_id: str, service_type: str) -> float:
+    """Update dynamic pricing based on market factors"""
+    pricing_record = await db.dynamic_pricing.find_one({
+        "service_id": service_id,
+        "service_type": service_type
+    })
+    
+    if not pricing_record:
+        return 0.0
+    
+    base_price = pricing_record["base_price"]
+    current_factors = pricing_record.get("dynamic_factors", {})
+    
+    # Apply dynamic factors
+    price_multiplier = 1.0
+    
+    # Demand factor
+    demand_factor = current_factors.get("demand", 1.0)
+    price_multiplier *= demand_factor
+    
+    # Supply factor
+    supply_factor = current_factors.get("supply", 1.0)
+    price_multiplier *= (2.0 - supply_factor)  # Inverse relationship
+    
+    # Seasonal factor
+    seasonal_factor = current_factors.get("seasonal", 1.0)
+    price_multiplier *= seasonal_factor
+    
+    # Calculate new price
+    new_price = base_price * price_multiplier
+    
+    # Apply bounds (50% to 200% of base price)
+    new_price = max(new_price, base_price * 0.5)
+    new_price = min(new_price, base_price * 2.0)
+    
+    # Update pricing record
+    await db.dynamic_pricing.update_one(
+        {"service_id": service_id, "service_type": service_type},
+        {
+            "$set": {
+                "current_price": round(new_price, 2),
+                "last_updated": datetime.utcnow()
+            },
+            "$push": {
+                "price_history": {
+                    "price": round(new_price, 2),
+                    "factors": current_factors.copy(),
+                    "timestamp": datetime.utcnow()
+                }
+            }
+        }
+    )
+    
+    return round(new_price, 2)
+
 # Pricing calculation helpers
 def calculate_dynamic_price(base_price: float, demand_factor: float, supply_factor: float, 
                           distance: float, urgency_factor: float) -> float:

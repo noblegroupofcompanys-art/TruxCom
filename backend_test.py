@@ -1181,13 +1181,13 @@ class TruxComAPITester:
                 headers={"Authorization": f"Bearer {admin_token}"}
             )
         
-        # Test get dynamic pricing
+        # Test get dynamic pricing (using query parameters)
         test_service_id = "test-service-123"
         
         self.run_test(
             "Get Dynamic Pricing",
             "GET",
-            f"admin/pricing/dynamic/{test_service_id}",
+            f"admin/pricing/dynamic/{test_service_id}?service_type=insurance",
             200,
             headers={"Authorization": f"Bearer {admin_token}"}
         )
@@ -1196,7 +1196,7 @@ class TruxComAPITester:
         self.run_test(
             "Get Dynamic Pricing with Factors",
             "GET",
-            f"admin/pricing/dynamic/{test_service_id}?demand_factor=1.2&supply_factor=0.8&seasonal_factor=1.1",
+            f"admin/pricing/dynamic/{test_service_id}?service_type=insurance&demand_factor=1.2&supply_factor=0.8&seasonal_factor=1.1",
             200,
             headers={"Authorization": f"Bearer {admin_token}"}
         )

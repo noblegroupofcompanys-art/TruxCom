@@ -3682,6 +3682,319 @@ async def convert_currency_amount(amount: float, from_currency: str, to_currency
     
     return conversion
 
+# Platform Enhancement API Routes
+
+# Insurance Marketplace Routes
+@api_router.get("/insurance/providers", response_model=List[InsuranceProvider])
+async def get_insurance_providers(insurance_type: Optional[str] = None):
+    """Get all active insurance providers"""
+    filter_query = {"active": True}
+    if insurance_type:
+        filter_query["insurance_types"] = {"$in": [insurance_type]}
+    
+    providers = await db.insurance_providers.find(filter_query).to_list(100)
+    return [InsuranceProvider(**provider) for provider in providers]
+
+@api_router.get("/insurance/plans", response_model=List[InsurancePlan])
+async def get_insurance_plans(insurance_type: Optional[str] = None, provider_id: Optional[str] = None):
+    """Get insurance plans with optional filtering"""
+    filter_query = {"active": True}
+    if insurance_type:
+        filter_query["insurance_type"] = insurance_type
+    if provider_id:
+        filter_query["provider_id"] = provider_id
+    
+    plans = await db.insurance_plans.find(filter_query).to_list(100)
+    return [InsurancePlan(**plan) for plan in plans]
+
+@api_router.post("/insurance/quote", response_model=InsuranceQuote)
+async def get_insurance_quote(
+    plan_id: str,
+    coverage_amount: float,
+    risk_factors: Dict[str, Any] = {},
+    current_user: User = Depends(get_current_user)
+):
+    """Get insurance quote"""
+    quote_calculation = await calculate_insurance_quote(
+        current_user.id, plan_id, coverage_amount, risk_factors
+    )
+    
+    plan = await db.insurance_plans.find_one({"id": plan_id})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Insurance plan not found")
+    
+    quote = InsuranceQuote(
+        user_id=current_user.id,
+        plan_id=plan_id,
+        insurance_type=plan["insurance_type"],
+        coverage_amount=coverage_amount,
+        premium_amount=quote_calculation["final_premium"],
+        deductible=plan["deductible_options"][0] if plan["deductible_options"] else 1000.0,
+        policy_details=quote_calculation,
+        risk_factors=risk_factors,
+        valid_until=datetime.utcnow() + timedelta(days=30)
+    )
+    
+    await db.insurance_quotes.insert_one(quote.dict())
+    return quote
+
+@api_router.post("/insurance/purchase/{quote_id}", response_model=InsurancePolicy)
+async def purchase_insurance_policy(
+    quote_id: str,
+    payment_method: str = "trux_credit",
+    current_user: User = Depends(get_current_user)
+):
+    """Purchase insurance policy from quote"""
+    quote = await db.insurance_quotes.find_one({"id": quote_id})
+    if not quote or quote["user_id"] != current_user.id:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    
+    if quote["valid_until"] < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Quote has expired")
+    
+    # Process payment (simplified)
+    if payment_method == "trux_credit":
+        if current_user.trux_credit_balance < quote["premium_amount"]:
+            raise HTTPException(status_code=400, detail="Insufficient TruxCredit balance")
+    
+    # Generate policy
+    policy_number = await generate_insurance_policy_number()
+    
+    policy = InsurancePolicy(
+        policy_number=policy_number,
+        user_id=current_user.id,
+        provider_id=quote["plan_id"],  # This should be provider_id from plan
+        plan_id=quote["plan_id"],
+        quote_id=quote_id,
+        start_date=datetime.utcnow(),
+        end_date=datetime.utcnow() + timedelta(days=365),
+        premium_amount=quote["premium_amount"],
+        coverage_amount=quote["coverage_amount"],
+        deductible=quote["deductible"]
+    )
+    
+    await db.insurance_policies.insert_one(policy.dict())
+    
+    # Update quote status
+    await db.insurance_quotes.update_one(
+        {"id": quote_id},
+        {"$set": {"status": "accepted"}}
+    )
+    
+    return policy
+
+@api_router.get("/insurance/my-policies", response_model=List[InsurancePolicy])
+async def get_user_insurance_policies(current_user: User = Depends(get_current_user)):
+    """Get user's insurance policies"""
+    policies = await db.insurance_policies.find({"user_id": current_user.id}).to_list(100)
+    return [InsurancePolicy(**policy) for policy in policies]
+
+@api_router.post("/insurance/claim", response_model=InsuranceClaim)
+async def file_insurance_claim(
+    policy_id: str,
+    incident_date: datetime,
+    claim_amount: float,
+    description: str,
+    incident_type: str,
+    related_shipment_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """File an insurance claim"""
+    policy = await db.insurance_policies.find_one({"id": policy_id, "user_id": current_user.id})
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    if policy["status"] != "active":
+        raise HTTPException(status_code=400, detail="Policy is not active")
+    
+    claim_number = f"CLM-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+    
+    claim = InsuranceClaim(
+        policy_id=policy_id,
+        user_id=current_user.id,
+        claim_number=claim_number,
+        incident_date=incident_date,
+        claim_amount=claim_amount,
+        description=description,
+        incident_type=incident_type,
+        related_shipment_id=related_shipment_id
+    )
+    
+    await db.insurance_claims.insert_one(claim.dict())
+    return claim
+
+# Training Hub Routes
+@api_router.get("/training/categories", response_model=List[TrainingCategory])
+async def get_training_categories():
+    """Get all training categories"""
+    categories = await db.training_categories.find({"active": True}).sort("display_order", 1).to_list(100)
+    return [TrainingCategory(**category) for category in categories]
+
+@api_router.get("/training/courses", response_model=List[TrainingCourse])
+async def get_training_courses(category_id: Optional[str] = None, difficulty: Optional[str] = None):
+    """Get training courses with optional filtering"""
+    filter_query = {"active": True}
+    if category_id:
+        filter_query["category_id"] = category_id
+    if difficulty:
+        filter_query["difficulty_level"] = difficulty
+    
+    courses = await db.training_courses.find(filter_query).sort("rating", -1).to_list(100)
+    return [TrainingCourse(**course) for course in courses]
+
+@api_router.get("/training/courses/{course_id}", response_model=TrainingCourse)
+async def get_course_details(course_id: str):
+    """Get detailed course information"""
+    course = await db.training_courses.find_one({"id": course_id})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    return TrainingCourse(**course)
+
+@api_router.post("/training/enroll/{course_id}", response_model=CourseEnrollment)
+async def enroll_in_course(course_id: str, current_user: User = Depends(get_current_user)):
+    """Enroll user in a training course"""
+    course = await db.training_courses.find_one({"id": course_id})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Check if already enrolled
+    existing_enrollment = await db.course_enrollments.find_one({
+        "user_id": current_user.id,
+        "course_id": course_id,
+        "status": {"$in": ["enrolled", "in_progress", "completed"]}
+    })
+    
+    if existing_enrollment:
+        raise HTTPException(status_code=400, detail="Already enrolled in this course")
+    
+    # Check payment (simplified)
+    course_price = course.get("price", 0.0)
+    if course_price > 0:
+        if current_user.trux_credit_balance < course_price:
+            raise HTTPException(status_code=400, detail="Insufficient TruxCredit balance")
+        
+        # Deduct payment
+        await db.users.update_one(
+            {"id": current_user.id},
+            {"$inc": {"trux_credit_balance": -course_price}}
+        )
+    
+    enrollment = CourseEnrollment(
+        user_id=current_user.id,
+        course_id=course_id,
+        payment_status="paid" if course_price > 0 else "free"
+    )
+    
+    await db.course_enrollments.insert_one(enrollment.dict())
+    
+    # Update course enrollment count
+    await db.training_courses.update_one(
+        {"id": course_id},
+        {"$inc": {"total_enrollments": 1}}
+    )
+    
+    return enrollment
+
+@api_router.get("/training/my-enrollments", response_model=List[CourseEnrollment])
+async def get_user_enrollments(current_user: User = Depends(get_current_user)):
+    """Get user's course enrollments"""
+    enrollments = await db.course_enrollments.find({"user_id": current_user.id}).to_list(100)
+    return [CourseEnrollment(**enrollment) for enrollment in enrollments]
+
+@api_router.post("/training/progress/{enrollment_id}")
+async def update_course_progress(
+    enrollment_id: str,
+    module_id: str,
+    content_item_id: str,
+    completed: bool = True,
+    time_spent_minutes: float = 0.0,
+    score: Optional[float] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Update course progress"""
+    enrollment = await db.course_enrollments.find_one({
+        "id": enrollment_id,
+        "user_id": current_user.id
+    })
+    
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    
+    # Create or update progress record
+    progress = CourseProgress(
+        enrollment_id=enrollment_id,
+        user_id=current_user.id,
+        course_id=enrollment["course_id"],
+        module_id=module_id,
+        content_item_id=content_item_id,
+        completed=completed,
+        time_spent_minutes=time_spent_minutes,
+        score=score,
+        completed_at=datetime.utcnow() if completed else None
+    )
+    
+    await db.course_progress.replace_one(
+        {
+            "enrollment_id": enrollment_id,
+            "module_id": module_id,
+            "content_item_id": content_item_id
+        },
+        progress.dict(),
+        upsert=True
+    )
+    
+    # Update overall progress
+    progress_percentage = await calculate_course_progress(enrollment_id)
+    
+    # Check if course is completed
+    if progress_percentage >= 100:
+        await db.course_enrollments.update_one(
+            {"id": enrollment_id},
+            {
+                "$set": {
+                    "status": "completed",
+                    "completion_date": datetime.utcnow()
+                }
+            }
+        )
+        
+        # Generate certificate if applicable
+        course = await db.training_courses.find_one({"id": enrollment["course_id"]})
+        if course and course.get("certification_provided", False):
+            certificate_url = await generate_course_certificate(enrollment_id)
+            return {"message": "Progress updated", "certificate_issued": True, "certificate_url": certificate_url}
+    
+    return {"message": "Progress updated", "progress_percentage": progress_percentage}
+
+@api_router.get("/training/certificates/{enrollment_id}")
+async def get_course_certificate(enrollment_id: str, current_user: User = Depends(get_current_user)):
+    """Get course completion certificate"""
+    enrollment = await db.course_enrollments.find_one({
+        "id": enrollment_id,
+        "user_id": current_user.id,
+        "status": "completed",
+        "certificate_issued": True
+    })
+    
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    
+    # In a real implementation, return the PDF certificate
+    # For now, return certificate details
+    course = await db.training_courses.find_one({"id": enrollment["course_id"]})
+    user = await db.users.find_one({"id": current_user.id})
+    
+    certificate_data = {
+        "certificate_url": enrollment["certificate_url"],
+        "user_name": f"{user['first_name']} {user['last_name']}",
+        "course_title": course["title"],
+        "completion_date": enrollment["completion_date"].strftime("%B %d, %Y"),
+        "certificate_id": enrollment_id
+    }
+    
+    return certificate_data
+
 # Include the router in the main app
 app.include_router(api_router)
 

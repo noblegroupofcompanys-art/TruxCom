@@ -412,6 +412,303 @@ class TruxComAPITester:
             headers=invalid_headers
         )
 
+    def test_advanced_gps_tracking(self):
+        """Test Advanced GPS Tracking and Geofencing features"""
+        print("\n" + "="*50)
+        print("TESTING ADVANCED GPS TRACKING & GEOFENCING")
+        print("="*50)
+        
+        if not self.driver_token or not self.test_shipment_id:
+            print("❌ Skipping GPS tests - missing driver token or shipment ID")
+            return
+        
+        # Test GPS location update
+        gps_data = {
+            "shipment_id": self.test_shipment_id,
+            "driver_id": self.driver_user.get('user_id', 'test-driver'),
+            "latitude": 40.7128,  # New York coordinates
+            "longitude": -74.0060,
+            "speed": 65.5,
+            "heading": 270.0,
+            "accuracy": 5.0
+        }
+        
+        success, response = self.run_test(
+            "GPS Location Update",
+            "POST",
+            "gps/update",
+            200,
+            data=gps_data,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        # Test unauthorized GPS update (shipper trying to update)
+        self.run_test(
+            "Unauthorized GPS Update (Should Fail)",
+            "POST",
+            "gps/update",
+            403,
+            data=gps_data,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test create geofence (shipper only)
+        geofence_data = {
+            "shipment_id": self.test_shipment_id,
+            "name": "Pickup Location",
+            "latitude": 40.7128,
+            "longitude": -74.0060,
+            "radius": 500.0,
+            "event_type": "pickup",
+            "alert_on_entry": True,
+            "alert_on_exit": True,
+            "notification_recipients": [self.shipper_user.get('user_id', 'test-shipper')]
+        }
+        
+        success, geofence_response = self.run_test(
+            "Create Geofence (Shipper)",
+            "POST",
+            f"shipments/{self.test_shipment_id}/geofences",
+            200,
+            data=geofence_data,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test get geofences for shipment
+        self.run_test(
+            "Get Shipment Geofences",
+            "GET",
+            f"shipments/{self.test_shipment_id}/geofences",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test get geofence events
+        self.run_test(
+            "Get Geofence Events",
+            "GET",
+            f"shipments/{self.test_shipment_id}/geofence-events",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test get route deviations
+        self.run_test(
+            "Get Route Deviations",
+            "GET",
+            f"shipments/{self.test_shipment_id}/route-deviations",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test get ETA calculation
+        self.run_test(
+            "Get ETA Calculation",
+            "GET",
+            f"shipments/{self.test_shipment_id}/eta",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+
+    def test_instapay_system(self):
+        """Test Full Instapay System features"""
+        print("\n" + "="*50)
+        print("TESTING FULL INSTAPAY SYSTEM")
+        print("="*50)
+        
+        if not self.shipper_token or not self.driver_token or not self.test_shipment_id:
+            print("❌ Skipping Instapay tests - missing tokens or shipment ID")
+            return
+        
+        # Test create escrow account
+        escrow_data = {
+            "shipment_id": self.test_shipment_id,
+            "amount": 2500.0,
+            "currency": "USD",
+            "payment_method": "stripe",
+            "milestone_conditions": [
+                {"condition": "pickup_confirmed", "description": "Cargo picked up", "percentage": 0},
+                {"condition": "delivery_confirmed", "description": "Cargo delivered", "percentage": 100}
+            ]
+        }
+        
+        success, escrow_response = self.run_test(
+            "Create Escrow Account",
+            "POST",
+            "escrow/create",
+            200,
+            data=escrow_data,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        escrow_id = None
+        if success and 'id' in escrow_response:
+            escrow_id = escrow_response['id']
+            print(f"   Escrow created with ID: {escrow_id}")
+        
+        # Test fund escrow account
+        if escrow_id:
+            fund_data = {"payment_method_id": "pm_test_card_visa"}
+            success, response = self.run_test(
+                "Fund Escrow Account",
+                "POST",
+                f"escrow/{escrow_id}/fund",
+                200,
+                data=fund_data,
+                headers={"Authorization": f"Bearer {self.shipper_token}"}
+            )
+        
+        # Test get my escrow accounts
+        self.run_test(
+            "Get My Escrow Accounts",
+            "GET",
+            "escrow/my-accounts",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test release escrow funds
+        if escrow_id:
+            release_data = {
+                "release_percentage": 100.0,
+                "reason": "delivery_confirmed"
+            }
+            self.run_test(
+                "Release Escrow Funds",
+                "POST",
+                f"escrow/{escrow_id}/release",
+                200,
+                data=release_data,
+                headers={"Authorization": f"Bearer {self.shipper_token}"}
+            )
+        
+        # Test invoice creation
+        invoice_data = {
+            "recipient_id": self.driver_user.get('user_id', 'test-driver'),
+            "related_type": "shipment",
+            "related_id": self.test_shipment_id,
+            "items": [
+                {
+                    "description": "Freight transportation services",
+                    "quantity": 1,
+                    "unit_price": 2500.0,
+                    "amount": 2500.0
+                }
+            ],
+            "currency": "USD",
+            "due_date": (datetime.now() + timedelta(days=30)).isoformat(),
+            "payment_terms": "Net 30",
+            "notes": "Payment for freight services"
+        }
+        
+        success, invoice_response = self.run_test(
+            "Create Invoice",
+            "POST",
+            "invoices/create",
+            200,
+            data=invoice_data,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        invoice_id = None
+        if success and 'id' in invoice_response:
+            invoice_id = invoice_response['id']
+            print(f"   Invoice created with ID: {invoice_id}")
+        
+        # Test send invoice
+        if invoice_id:
+            self.run_test(
+                "Send Invoice",
+                "POST",
+                f"invoices/{invoice_id}/send",
+                200,
+                headers={"Authorization": f"Bearer {self.shipper_token}"}
+            )
+        
+        # Test get sent invoices
+        self.run_test(
+            "Get Sent Invoices",
+            "GET",
+            "invoices/sent",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test get received invoices (driver)
+        self.run_test(
+            "Get Received Invoices",
+            "GET",
+            "invoices/received",
+            200,
+            headers={"Authorization": f"Bearer {self.driver_token}"}
+        )
+        
+        # Test pay invoice
+        if invoice_id:
+            payment_data = {
+                "payment_method": "trux_credit",
+                "amount": 2500.0
+            }
+            self.run_test(
+                "Pay Invoice",
+                "POST",
+                f"invoices/{invoice_id}/pay",
+                200,
+                data=payment_data,
+                headers={"Authorization": f"Bearer {self.driver_token}"}
+            )
+
+    def test_multi_currency_support(self):
+        """Test Multi-currency Support features"""
+        print("\n" + "="*50)
+        print("TESTING MULTI-CURRENCY SUPPORT")
+        print("="*50)
+        
+        if not self.shipper_token:
+            print("❌ Skipping currency tests - missing shipper token")
+            return
+        
+        # Test get exchange rates
+        self.run_test(
+            "Get Exchange Rates",
+            "GET",
+            "currencies/rates?base=USD&targets=EUR,GBP,CAD",
+            200,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test currency conversion
+        conversion_data = {
+            "amount": 1000.0,
+            "from_currency": "USD",
+            "to_currency": "EUR"
+        }
+        
+        self.run_test(
+            "Convert Currency",
+            "POST",
+            "currencies/convert",
+            200,
+            data=conversion_data,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+        
+        # Test multiple currency conversions
+        multi_conversion_data = {
+            "amount": 2500.0,
+            "from_currency": "USD",
+            "to_currencies": ["EUR", "GBP", "CAD", "JPY"]
+        }
+        
+        self.run_test(
+            "Multi-Currency Conversion",
+            "POST",
+            "currencies/convert",
+            200,
+            data=multi_conversion_data,
+            headers={"Authorization": f"Bearer {self.shipper_token}"}
+        )
+
     def run_all_tests(self):
         """Run all test suites"""
         print("🚀 Starting TruxCom API Testing Suite")
@@ -422,6 +719,9 @@ class TruxComAPITester:
             self.test_auth_endpoints()
             self.test_shipment_endpoints()
             self.test_bid_endpoints()
+            self.test_advanced_gps_tracking()
+            self.test_instapay_system()
+            self.test_multi_currency_support()
             self.test_dashboard_endpoints()
             self.test_unauthorized_access()
             

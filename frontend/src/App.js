@@ -316,9 +316,9 @@ function App() {
       });
       
       fetchDashboardData();
-      alert('Shipment created successfully!');
+      toast.success('Shipment created successfully!');
     } catch (error) {
-      alert(error.response?.data?.detail || 'Failed to create shipment');
+      toast.error(error.response?.data?.detail || 'Failed to create shipment');
     } finally {
       setIsLoading(false);
     }

@@ -39,7 +39,7 @@ function App() {
   const [bids, setBids] = useState([]);
   const [stats, setStats] = useState({});
   const [notifications, setNotifications] = useState([]);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('overview');
 
   // Real-time features
   const [wsConnection, setWsConnection] = useState(null);

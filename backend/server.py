@@ -687,26 +687,302 @@ def calculate_dynamic_price(base_price: float, demand_factor: float, supply_fact
     dynamic_price = base_price * demand_multiplier * supply_multiplier * distance_multiplier * urgency_multiplier
     return round(dynamic_price, 2)
 
-def calculate_route_optimization(origin: str, destination: str) -> Dict[str, float]:
-    """Calculate optimized route metrics"""
-    # Mock route optimization (in real app, use Google Maps/MapBox API)
-    city_distances = {
-        ("New York, NY", "Los Angeles, CA"): {"distance": 2789, "duration": 41, "fuel_cost": 350},
-        ("Chicago, IL", "Houston, TX"): {"distance": 1088, "duration": 16, "fuel_cost": 140},
-        ("Miami, FL", "Atlanta, GA"): {"distance": 664, "duration": 10, "fuel_cost": 85},
-        ("Denver, CO", "Seattle, WA"): {"distance": 1318, "duration": 20, "fuel_cost": 170},
-    }
+# Geofencing and Route Optimization Utilities
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate the great circle distance between two points on Earth in meters"""
+    R = 6371000  # Earth's radius in meters
     
-    route_key = (origin, destination)
-    reverse_key = (destination, origin)
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
     
-    if route_key in city_distances:
-        return city_distances[route_key]
-    elif reverse_key in city_distances:
-        return city_distances[reverse_key]
+    a = math.sin(delta_lat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    
+    return R * c
+
+def is_location_in_geofence(lat: float, lon: float, geofence_lat: float, geofence_lon: float, radius: float) -> bool:
+    """Check if a location is within a geofence"""
+    distance = haversine_distance(lat, lon, geofence_lat, geofence_lon)
+    return distance <= radius
+
+def calculate_route_deviation(current_lat: float, current_lon: float, planned_route: List[Dict]) -> float:
+    """Calculate minimum distance from current location to planned route"""
+    if not planned_route:
+        return 0.0
+    
+    min_distance = float('inf')
+    for point in planned_route:
+        distance = haversine_distance(current_lat, current_lon, point['latitude'], point['longitude'])
+        min_distance = min(min_distance, distance)
+    
+    return min_distance
+
+def calculate_eta(current_location: Dict, destination: Dict, average_speed_kmh: float = 60, 
+                 traffic_factor: float = 1.0, weather_factor: float = 1.0) -> datetime:
+    """Calculate estimated time of arrival based on current location"""
+    distance_km = haversine_distance(
+        current_location['latitude'], current_location['longitude'],
+        destination['latitude'], destination['longitude']
+    ) / 1000
+    
+    # Apply factors for traffic and weather conditions
+    adjusted_speed = average_speed_kmh * traffic_factor * weather_factor
+    
+    # Ensure minimum speed to avoid division by zero
+    adjusted_speed = max(adjusted_speed, 10)
+    
+    travel_time_hours = distance_km / adjusted_speed
+    travel_time_minutes = travel_time_hours * 60
+    
+    return datetime.utcnow() + timedelta(minutes=travel_time_minutes)
+
+def get_route_deviation_severity(deviation_distance: float) -> str:
+    """Determine severity of route deviation"""
+    if deviation_distance < 500:  # < 500m
+        return "minor"
+    elif deviation_distance < 2000:  # < 2km
+        return "moderate"
     else:
-        # Default calculation for unknown routes
-        return {"distance": 500, "duration": 8, "fuel_cost": 65}
+        return "major"
+
+async def process_geofence_events(shipment_id: str, current_location: Dict, driver_id: str):
+    """Process geofence events for a shipment"""
+    # Get active geofences for this shipment
+    geofences = await db.geofences.find({
+        "shipment_id": shipment_id,
+        "active": True
+    }).to_list(100)
+    
+    events_triggered = []
+    
+    for geofence in geofences:
+        is_inside = is_location_in_geofence(
+            current_location['latitude'], current_location['longitude'],
+            geofence['latitude'], geofence['longitude'],
+            geofence['radius']
+        )
+        
+        # Check if driver was previously inside/outside
+        last_location = await db.gps_locations.find_one(
+            {"shipment_id": shipment_id, "driver_id": driver_id},
+            sort=[("timestamp", -1)]
+        )
+        
+        was_inside = False
+        if last_location and last_location.get('geofence_events'):
+            was_inside = f"inside_{geofence['id']}" in last_location['geofence_events']
+        
+        # Detect entry/exit events
+        if is_inside and not was_inside and geofence['alert_on_entry']:
+            # Entry event
+            event = GeofenceEvent(
+                geofence_id=geofence['id'],
+                shipment_id=shipment_id,
+                driver_id=driver_id,
+                event_type="entry",
+                location=current_location
+            )
+            await db.geofence_events.insert_one(event.dict())
+            events_triggered.append(f"entered_{geofence['event_type']}")
+            
+            # Send notifications
+            for recipient_id in geofence.get('notification_recipients', []):
+                await create_notification(
+                    recipient_id,
+                    "geofence_entry",
+                    f"Geofence Entry Alert",
+                    f"Driver has entered {geofence['name']} geofence",
+                    {"geofence_id": geofence['id'], "shipment_id": shipment_id},
+                    priority="normal",
+                    channels=["in_app", "sms"]
+                )
+        
+        elif not is_inside and was_inside and geofence['alert_on_exit']:
+            # Exit event
+            event = GeofenceEvent(
+                geofence_id=geofence['id'],
+                shipment_id=shipment_id,
+                driver_id=driver_id,
+                event_type="exit",
+                location=current_location
+            )
+            await db.geofence_events.insert_one(event.dict())
+            events_triggered.append(f"exited_{geofence['event_type']}")
+            
+            # Send notifications
+            for recipient_id in geofence.get('notification_recipients', []):
+                await create_notification(
+                    recipient_id,
+                    "geofence_exit",
+                    f"Geofence Exit Alert",
+                    f"Driver has exited {geofence['name']} geofence",
+                    {"geofence_id": geofence['id'], "shipment_id": shipment_id},
+                    priority="normal",
+                    channels=["in_app", "sms"]
+                )
+        
+        # Mark current state
+        if is_inside:
+            events_triggered.append(f"inside_{geofence['id']}")
+    
+    return events_triggered
+
+async def check_route_deviation(shipment_id: str, current_location: Dict, driver_id: str):
+    """Check for route deviation and create alerts if necessary"""
+    shipment = await db.shipments.find_one({"id": shipment_id})
+    if not shipment or not shipment.get('planned_route'):
+        return
+    
+    deviation_distance = calculate_route_deviation(
+        current_location['latitude'],
+        current_location['longitude'],
+        shipment['planned_route']
+    )
+    
+    # Check if deviation exceeds threshold (500m for minor alert)
+    if deviation_distance > 500:
+        severity = get_route_deviation_severity(deviation_distance)
+        
+        # Check if we already have a recent unacknowledged deviation
+        recent_deviation = await db.route_deviations.find_one({
+            "shipment_id": shipment_id,
+            "acknowledged": False,
+            "created_at": {"$gte": datetime.utcnow() - timedelta(minutes=30)}
+        })
+        
+        if not recent_deviation:
+            # Create new deviation alert
+            deviation = RouteDeviation(
+                shipment_id=shipment_id,
+                driver_id=driver_id,
+                deviation_distance=deviation_distance,
+                deviation_duration=0,  # Will be calculated later
+                current_location=current_location,
+                planned_route_point={},  # Closest planned route point
+                severity=severity
+            )
+            await db.route_deviations.insert_one(deviation.dict())
+            
+            # Send notifications based on severity
+            priority = "normal" if severity == "minor" else "high" if severity == "moderate" else "urgent"
+            
+            # Notify shipper
+            await create_notification(
+                shipment['shipper_id'],
+                "route_deviation",
+                f"{severity.title()} Route Deviation",
+                f"Driver is {int(deviation_distance)}m off planned route",
+                {"deviation_id": deviation.id, "shipment_id": shipment_id, "severity": severity},
+                priority=priority,
+                channels=["in_app", "sms"] if severity != "minor" else ["in_app"]
+            )
+
+async def update_eta(shipment_id: str, current_location: Dict):
+    """Update ETA calculation for a shipment"""
+    shipment = await db.shipments.find_one({"id": shipment_id})
+    if not shipment:
+        return
+    
+    # Get destination coordinates (mock - in real app would use geocoding)
+    destination_coords = get_city_coordinates(shipment['destination_address'])
+    
+    # Calculate new ETA with various factors
+    traffic_factor = random.uniform(0.8, 1.2)  # Mock traffic conditions
+    weather_factor = random.uniform(0.9, 1.1)  # Mock weather conditions
+    
+    new_eta = calculate_eta(
+        current_location,
+        destination_coords,
+        average_speed_kmh=65,
+        traffic_factor=traffic_factor,
+        weather_factor=weather_factor
+    )
+    
+    # Get original ETA from shipment
+    original_eta = shipment['delivery_deadline']
+    if isinstance(original_eta, str):
+        original_eta = datetime.fromisoformat(original_eta.replace('Z', '+00:00'))
+    
+    delay_minutes = int((new_eta - original_eta).total_seconds() / 60)
+    
+    # Calculate confidence based on distance to destination
+    distance_km = haversine_distance(
+        current_location['latitude'], current_location['longitude'],
+        destination_coords['latitude'], destination_coords['longitude']
+    ) / 1000
+    
+    # Higher confidence for shorter distances
+    confidence = max(0.5, 1.0 - (distance_km / 1000))
+    
+    eta_calc = ETACalculation(
+        shipment_id=shipment_id,
+        current_eta=new_eta,
+        original_eta=original_eta,
+        delay_minutes=delay_minutes,
+        confidence=confidence,
+        factors=["traffic", "weather"] if traffic_factor != 1.0 or weather_factor != 1.0 else []
+    )
+    
+    # Update or insert ETA calculation
+    await db.eta_calculations.replace_one(
+        {"shipment_id": shipment_id},
+        eta_calc.dict(),
+        upsert=True
+    )
+    
+    # Send delay notifications if significant
+    if delay_minutes > 30:  # More than 30 minutes delay
+        await create_notification(
+            shipment['shipper_id'],
+            "eta_delay",
+            "Delivery Delay Alert",
+            f"Shipment delivery delayed by {delay_minutes} minutes",
+            {"shipment_id": shipment_id, "delay_minutes": delay_minutes},
+            priority="normal",
+            channels=["in_app", "sms"]
+        )
+
+def get_city_coordinates(city_name: str) -> Dict[str, float]:
+    """Mock function to get city coordinates - in real app would use geocoding API"""
+    city_coords = {
+        "New York, NY": {"latitude": 40.7128, "longitude": -74.0060},
+        "Los Angeles, CA": {"latitude": 34.0522, "longitude": -118.2437},
+        "Chicago, IL": {"latitude": 41.8781, "longitude": -87.6298},
+        "Houston, TX": {"latitude": 29.7604, "longitude": -95.3698},
+        "Miami, FL": {"latitude": 25.7617, "longitude": -80.1918},
+        "Atlanta, GA": {"latitude": 33.7490, "longitude": -84.3880},
+        "Denver, CO": {"latitude": 39.7392, "longitude": -104.9903},
+        "Seattle, WA": {"latitude": 47.6062, "longitude": -122.3321},
+    }
+    return city_coords.get(city_name, {"latitude": 0.0, "longitude": 0.0})
+
+def calculate_route_optimization(origin: str, destination: str) -> Dict[str, float]:
+    """Calculate optimized route metrics using city coordinates"""
+    # Get coordinates for origin and destination
+    origin_coords = get_city_coordinates(origin)
+    dest_coords = get_city_coordinates(destination)
+    
+    # Calculate distance using haversine formula
+    distance_meters = haversine_distance(
+        origin_coords['latitude'], origin_coords['longitude'],
+        dest_coords['latitude'], dest_coords['longitude']
+    )
+    distance_km = distance_meters / 1000
+    
+    # Estimate duration based on average highway speed (65 km/h)
+    duration_hours = distance_km / 65
+    
+    # Estimate fuel cost (rough calculation: $0.15 per km)
+    fuel_cost = distance_km * 0.15
+    
+    return {
+        "distance": distance_km,
+        "duration": duration_hours,
+        "fuel_cost": fuel_cost
+    }
 
 # API Routes
 

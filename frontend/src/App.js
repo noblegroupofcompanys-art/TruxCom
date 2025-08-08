@@ -679,6 +679,14 @@ function App() {
             </TabsTrigger>
           </TabsList>
 
+          {/* Platform Overview */}
+          <TabsContent value="overview" className="space-y-6">
+            <PlatformOverview
+              user={user}
+              token={token}
+            />
+          </TabsContent>
+
           {/* Dashboard */}
           <TabsContent value="dashboard" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

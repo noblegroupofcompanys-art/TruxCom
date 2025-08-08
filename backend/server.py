@@ -961,6 +961,268 @@ async def create_notification(user_id: str, notification_type: str, title: str, 
     # TODO: Send SMS/Email notifications based on channels
     # This would integrate with Twilio/SendGrid for real notifications
 
+# Instapay System Functions
+async def create_escrow_for_shipment(shipment_id: str, shipper_id: str, carrier_id: str, 
+                                   amount: float, currency: str = "USD", payment_method: str = "stripe",
+                                   milestone_conditions: List[Dict] = None) -> EscrowAccount:
+    """Create an escrow account for a shipment"""
+    if milestone_conditions is None:
+        milestone_conditions = [
+            {"condition": "pickup_confirmed", "description": "Cargo picked up", "percentage": 0},
+            {"condition": "delivery_confirmed", "description": "Cargo delivered", "percentage": 100}
+        ]
+    
+    escrow = EscrowAccount(
+        shipment_id=shipment_id,
+        shipper_id=shipper_id,
+        carrier_id=carrier_id,
+        amount=amount,
+        currency=currency,
+        milestone_conditions=milestone_conditions,
+        terms={
+            "payment_method": payment_method,
+            "dispute_period": 7,  # days
+            "auto_release": True
+        }
+    )
+    
+    await db.escrow_accounts.insert_one(escrow.dict())
+    
+    # Send notifications
+    await create_notification(
+        shipper_id,
+        "escrow_created",
+        "Escrow Account Created",
+        f"Escrow account created for ${amount} {currency}",
+        {"escrow_id": escrow.id, "shipment_id": shipment_id},
+        priority="normal"
+    )
+    
+    await create_notification(
+        carrier_id,
+        "escrow_created",
+        "Payment Secured in Escrow",
+        f"${amount} {currency} secured in escrow for your shipment",
+        {"escrow_id": escrow.id, "shipment_id": shipment_id},
+        priority="normal"
+    )
+    
+    return escrow
+
+async def fund_escrow_account(escrow_id: str, payment_method_id: str = None) -> bool:
+    """Fund an escrow account"""
+    escrow = await db.escrow_accounts.find_one({"id": escrow_id})
+    if not escrow:
+        return False
+    
+    # Simulate payment processing (in real app, integrate with Stripe)
+    success = await process_payment(
+        amount=escrow["amount"],
+        currency=escrow["currency"],
+        payment_method=escrow["terms"].get("payment_method", "stripe"),
+        payment_method_id=payment_method_id
+    )
+    
+    if success:
+        await db.escrow_accounts.update_one(
+            {"id": escrow_id},
+            {
+                "$set": {
+                    "status": "funded",
+                    "funded_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        # Notify carrier that funds are secured
+        await create_notification(
+            escrow["carrier_id"],
+            "escrow_funded",
+            "Escrow Account Funded",
+            f"${escrow['amount']} {escrow['currency']} is now secured in escrow",
+            {"escrow_id": escrow_id, "shipment_id": escrow["shipment_id"]},
+            priority="normal"
+        )
+        
+        return True
+    
+    return False
+
+async def release_escrow_funds(escrow_id: str, release_percentage: float = 100.0, reason: str = "delivery_confirmed") -> bool:
+    """Release funds from escrow to carrier"""
+    escrow = await db.escrow_accounts.find_one({"id": escrow_id})
+    if not escrow or escrow["status"] != "funded":
+        return False
+    
+    release_amount = (escrow["amount"] * release_percentage) / 100.0
+    
+    # Transfer funds to carrier's TruxCredit wallet
+    await db.users.update_one(
+        {"id": escrow["carrier_id"]},
+        {"$inc": {"trux_credit_balance": release_amount}}
+    )
+    
+    # Record transaction
+    transaction = TruxCreditTransaction(
+        user_id=escrow["carrier_id"],
+        amount=release_amount,
+        transaction_type="credit",
+        description=f"Escrow release - {reason}",
+        related_id=escrow["shipment_id"]
+    )
+    await db.trux_credit_transactions.insert_one(transaction.dict())
+    
+    # Update escrow status
+    await db.escrow_accounts.update_one(
+        {"id": escrow_id},
+        {
+            "$set": {
+                "status": "released" if release_percentage >= 100 else "partial_release",
+                "released_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Send notifications
+    await create_notification(
+        escrow["carrier_id"],
+        "escrow_released",
+        "Payment Released",
+        f"${release_amount} {escrow['currency']} released to your account",
+        {"escrow_id": escrow_id, "amount": release_amount},
+        priority="normal"
+    )
+    
+    await create_notification(
+        escrow["shipper_id"],
+        "escrow_released",
+        "Payment Released to Carrier",
+        f"${release_amount} {escrow['currency']} released from escrow",
+        {"escrow_id": escrow_id, "amount": release_amount},
+        priority="normal"
+    )
+    
+    return True
+
+async def process_payment(amount: float, currency: str, payment_method: str, payment_method_id: str = None) -> bool:
+    """Process payment (mock implementation - integrate with Stripe in production)"""
+    # Simulate payment processing delay
+    await asyncio.sleep(0.1)
+    
+    # Mock success rate (95% success in simulation)
+    success_rate = 0.95
+    return random.random() < success_rate
+
+async def generate_invoice(invoice_create: InvoiceCreate, issuer_id: str) -> Invoice:
+    """Generate an invoice"""
+    # Calculate amounts
+    subtotal = sum(item.get('amount', 0) for item in invoice_create.items)
+    tax_rate = 0.08  # 8% tax rate (should be configurable)
+    tax_amount = subtotal * tax_rate
+    total_amount = subtotal + tax_amount
+    
+    # Generate invoice number
+    invoice_count = await db.invoices.count_documents({}) + 1
+    invoice_number = f"INV-{datetime.utcnow().year}-{invoice_count:06d}"
+    
+    invoice_dict = invoice_create.dict()
+    invoice_dict.update({
+        "id": str(uuid.uuid4()),
+        "invoice_number": invoice_number,
+        "issuer_id": issuer_id,
+        "subtotal": subtotal,
+        "tax_amount": tax_amount,
+        "total_amount": total_amount,
+        "status": "draft"
+    })
+    
+    invoice = Invoice(**invoice_dict)
+    await db.invoices.insert_one(invoice.dict())
+    
+    return invoice
+
+async def send_invoice(invoice_id: str) -> bool:
+    """Send an invoice to the recipient"""
+    invoice = await db.invoices.find_one({"id": invoice_id})
+    if not invoice:
+        return False
+    
+    # Update status to sent
+    await db.invoices.update_one(
+        {"id": invoice_id},
+        {
+            "$set": {
+                "status": "sent",
+                "sent_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Send notification to recipient
+    await create_notification(
+        invoice["recipient_id"],
+        "invoice_received",
+        "Invoice Received",
+        f"New invoice {invoice['invoice_number']} for ${invoice['total_amount']} {invoice['currency']}",
+        {"invoice_id": invoice_id, "amount": invoice["total_amount"]},
+        priority="normal",
+        channels=["in_app", "email"]
+    )
+    
+    return True
+
+async def get_exchange_rate(from_currency: str, to_currency: str) -> float:
+    """Get exchange rate between currencies (mock implementation)"""
+    # Mock exchange rates (in production, use real API like exchangerate-api.com)
+    mock_rates = {
+        ("USD", "EUR"): 0.85,
+        ("USD", "GBP"): 0.73,
+        ("USD", "CAD"): 1.25,
+        ("USD", "JPY"): 110.0,
+        ("EUR", "USD"): 1.18,
+        ("GBP", "USD"): 1.37,
+        ("CAD", "USD"): 0.80,
+        ("JPY", "USD"): 0.009
+    }
+    
+    if from_currency == to_currency:
+        return 1.0
+    
+    rate = mock_rates.get((from_currency, to_currency))
+    if rate:
+        return rate
+    
+    # Try reverse rate
+    reverse_rate = mock_rates.get((to_currency, from_currency))
+    if reverse_rate:
+        return 1.0 / reverse_rate
+    
+    # Default to 1.0 if rate not found
+    return 1.0
+
+async def convert_currency(amount: float, from_currency: str, to_currency: str) -> Dict[str, float]:
+    """Convert amount from one currency to another"""
+    if from_currency == to_currency:
+        return {
+            "original_amount": amount,
+            "converted_amount": amount,
+            "exchange_rate": 1.0,
+            "conversion_fee": 0.0
+        }
+    
+    exchange_rate = await get_exchange_rate(from_currency, to_currency)
+    converted_amount = amount * exchange_rate
+    
+    # Calculate conversion fee (1% for currency conversion)
+    conversion_fee = converted_amount * 0.01
+    
+    return {
+        "original_amount": amount,
+        "converted_amount": converted_amount,
+        "exchange_rate": exchange_rate,
+        "conversion_fee": conversion_fee
+    }
+
 # Pricing calculation helpers
 def calculate_dynamic_price(base_price: float, demand_factor: float, supply_factor: float, 
                           distance: float, urgency_factor: float) -> float:

@@ -1167,31 +1167,17 @@ class TruxComAPITester:
         if success and 'id' in template_response:
             print(f"   Pricing template created with ID: {template_response['id']}")
         
-        # Test update service pricing
+        # Test update service pricing (using query parameters)
         service_types = ["insurance", "training", "commission"]
         
         for service_type in service_types:
-            pricing_update_data = {
-                "base_price": 150.0,
-                "pricing_rules": {
-                    "volume_discount": {
-                        "threshold": 10,
-                        "discount_percentage": 10.0
-                    },
-                    "seasonal_adjustment": {
-                        "peak_season_multiplier": 1.2,
-                        "off_season_multiplier": 0.9
-                    }
-                },
-                "effective_date": datetime.now().isoformat()
-            }
+            pricing_params = f"service_id=test-{service_type}-service&new_price=150.0&effective_date={datetime.now().isoformat()}"
             
             self.run_test(
                 f"Update {service_type.title()} Service Pricing",
                 "PUT",
-                f"admin/pricing/update/{service_type}",
+                f"admin/pricing/update/{service_type}?{pricing_params}",
                 200,
-                data=pricing_update_data,
                 headers={"Authorization": f"Bearer {admin_token}"}
             )
         

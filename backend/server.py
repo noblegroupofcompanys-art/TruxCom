@@ -208,6 +208,7 @@ async def register_user(user_create: UserCreate):
 async def login_user(user_login: UserLogin):
     user = await db.users.find_one({"email": user_login.email})
     if not user:
+        logger.info(f"Login failed: User not found for email {user_login.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
@@ -215,7 +216,20 @@ async def login_user(user_login: UserLogin):
     
     # Check if password_hash field exists (backward compatibility)
     password_hash = user.get("password_hash")
-    if not password_hash or not verify_password(user_login.password, password_hash):
+    logger.info(f"User found: {user.get('email')}, password_hash exists: {bool(password_hash)}")
+    
+    if not password_hash:
+        logger.error(f"No password_hash found for user {user_login.email}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password"
+        )
+    
+    # Verify password
+    is_valid = verify_password(user_login.password, password_hash)
+    logger.info(f"Password verification result: {is_valid}")
+    
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"

@@ -1231,6 +1231,47 @@ function App() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Real-time Components */}
+      {selectedShipmentForChat && (
+        <MessagingCenter
+          shipment={selectedShipmentForChat}
+          currentUser={user}
+          token={token}
+          isOpen={isChatOpen}
+          onClose={() => {
+            setIsChatOpen(false);
+            setSelectedShipmentForChat(null);
+          }}
+        />
+      )}
+
+      {/* Full-screen Map Modal */}
+      {isMapOpen && selectedShipmentForMap && (
+        <>
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-40" onClick={() => setIsMapOpen(false)} />
+          <div className="fixed inset-4 z-50 bg-white rounded-lg overflow-hidden">
+            <div className="h-full flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b">
+                <div>
+                  <h2 className="text-lg font-bold">Live Tracking</h2>
+                  <p className="text-sm text-gray-600">
+                    {selectedShipmentForMap.origin_address} → {selectedShipmentForMap.destination_address}
+                  </p>
+                </div>
+                <Button variant="ghost" onClick={() => setIsMapOpen(false)}>×</Button>
+              </div>
+              <div className="flex-1">
+                <MapView 
+                  shipment={selectedShipmentForMap}
+                  currentLocation={selectedShipmentForMap.current_location}
+                  className="h-full"
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

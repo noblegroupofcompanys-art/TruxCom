@@ -1012,20 +1012,15 @@ class TruxComAPITester:
                 headers={"Authorization": f"Bearer {admin_token}"}
             )
         
-        # Test calculate commission
+        # Test calculate commission (using query parameters)
         if admin_token:
-            commission_data = {
-                "transaction_amount": 2500.0,
-                "service_type": "freight",
-                "user_type": "driver"
-            }
+            commission_params = "transaction_amount=2500.0&service_type=freight&user_type=driver"
             
             self.run_test(
                 "Calculate Commission",
                 "POST",
-                "admin/commission/calculate",
+                f"admin/commission/calculate?{commission_params}",
                 200,
-                data=commission_data,
                 headers={"Authorization": f"Bearer {admin_token}"}
             )
 

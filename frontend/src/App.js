@@ -994,6 +994,19 @@ function App() {
                       </Dialog>
                     </CardFooter>
                   )}
+                  
+                  {/* Demo: Start Transit Button for booked shipments */}
+                  {user.user_type === 'driver' && shipment.status === 'booked' && shipment.carrier_id === user.id && (
+                    <CardFooter>
+                      <Button
+                        onClick={() => startTransit(shipment.id)}
+                        className="bg-green-500 text-white hover:bg-green-600"
+                      >
+                        <Navigation className="w-4 h-4 mr-2" />
+                        Start Transit (Demo)
+                      </Button>
+                    </CardFooter>
+                  )}
                 </Card>
               ))}
             </div>

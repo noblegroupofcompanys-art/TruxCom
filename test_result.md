@@ -102,7 +102,68 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Implement Option B: Advanced Shipment Tracking (geofencing, route deviation alerts, ETA calculations) AND Option C: Full Instapay System (escrow services, automated invoicing, multi-currency support) for the TruxCom logistics marketplace platform."
+user_problem_statement: "Implement Platform Enhancement features: 1) Insurance Marketplace - Add cargo/fleet insurance features, 2) Training Hub - Implement logistics education modules, 3) Advanced Admin Tools - KYC verification, dispute resolution, 4) Advanced Analytics - AI-powered insights and reporting. Make it easy for main platform admin to enter pricing data later on."
+
+backend:
+  - task: "Insurance Marketplace System"
+    implemented: false
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implement comprehensive insurance marketplace with cargo, fleet, and liability insurance features"
+
+  - task: "Training Hub System"
+    implemented: false
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Create training hub with courses, certifications, progress tracking, and interactive modules"
+
+  - task: "Advanced Admin Tools"
+    implemented: false
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Build KYC verification, dispute resolution, user management, and commission tracking systems"
+
+  - task: "Advanced Analytics System"
+    implemented: false
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implement AI-powered analytics, reporting dashboard, and predictive insights"
+
+  - task: "Admin Pricing Management"
+    implemented: false
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Create admin interface for managing pricing data across all platform features"
 
 backend:
   - task: "Advanced Geofencing System"

@@ -476,7 +476,7 @@ function App() {
               <Truck className="w-8 h-8 text-black" />
             </div>
             <CardTitle className="text-2xl font-bold">TruxCom</CardTitle>
-            <CardDescription>Your Logistics Marketplace</CardDescription>
+            <CardDescription>Your Real-Time Logistics Marketplace</CardDescription>
           </CardHeader>
           
           <CardContent>

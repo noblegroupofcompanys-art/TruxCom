@@ -910,6 +910,32 @@ function App() {
             />
           </TabsContent>
 
+          {/* Insurance Marketplace */}
+          <TabsContent value="insurance" className="space-y-6">
+            <InsuranceMarketplace
+              user={user}
+              token={token}
+            />
+          </TabsContent>
+
+          {/* Training Hub */}
+          <TabsContent value="training" className="space-y-6">
+            <TrainingHub
+              user={user}
+              token={token}
+            />
+          </TabsContent>
+
+          {/* Admin Dashboard */}
+          {(user.user_type === 'admin' || user.user_type === 'super_admin') && (
+            <TabsContent value="admin" className="space-y-6">
+              <AdminDashboard
+                user={user}
+                token={token}
+              />
+            </TabsContent>
+          )}
+
           {/* Shipments - Enhanced with real-time features */}
           <TabsContent value="shipments" className="space-y-6">
             <div className="grid gap-6">

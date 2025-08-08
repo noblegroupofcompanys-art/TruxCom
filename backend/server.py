@@ -2693,6 +2693,252 @@ async def simulate_gps_updates():
 async def startup_event():
     asyncio.create_task(simulate_gps_updates())
 
+# Instapay System API Routes
+
+@api_router.post("/escrow/create", response_model=EscrowAccount)
+async def create_escrow(escrow_create: EscrowCreate, current_user: User = Depends(get_current_user)):
+    """Create an escrow account for a shipment"""
+    # Verify shipment ownership
+    shipment = await db.shipments.find_one({"id": escrow_create.shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    
+    if shipment["shipper_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the shipper can create escrow accounts")
+    
+    if not shipment.get("carrier_id"):
+        raise HTTPException(status_code=400, detail="Shipment must have an assigned carrier for escrow")
+    
+    # Check if escrow already exists
+    existing_escrow = await db.escrow_accounts.find_one({"shipment_id": escrow_create.shipment_id})
+    if existing_escrow:
+        raise HTTPException(status_code=400, detail="Escrow account already exists for this shipment")
+    
+    escrow = await create_escrow_for_shipment(
+        shipment_id=escrow_create.shipment_id,
+        shipper_id=current_user.id,
+        carrier_id=shipment["carrier_id"],
+        amount=escrow_create.amount,
+        currency=escrow_create.currency,
+        payment_method=escrow_create.payment_method,
+        milestone_conditions=escrow_create.milestone_conditions
+    )
+    
+    return escrow
+
+@api_router.post("/escrow/{escrow_id}/fund")
+async def fund_escrow(escrow_id: str, payment_method_id: str = None, current_user: User = Depends(get_current_user)):
+    """Fund an escrow account"""
+    escrow = await db.escrow_accounts.find_one({"id": escrow_id})
+    if not escrow:
+        raise HTTPException(status_code=404, detail="Escrow account not found")
+    
+    if escrow["shipper_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the shipper can fund the escrow account")
+    
+    if escrow["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Escrow account is not in pending status")
+    
+    success = await fund_escrow_account(escrow_id, payment_method_id)
+    if success:
+        return {"status": "success", "message": "Escrow account funded successfully"}
+    else:
+        raise HTTPException(status_code=400, detail="Failed to fund escrow account")
+
+@api_router.post("/escrow/{escrow_id}/release")
+async def release_escrow(escrow_id: str, release_percentage: float = 100.0, 
+                        reason: str = "delivery_confirmed", current_user: User = Depends(get_current_user)):
+    """Release funds from escrow"""
+    escrow = await db.escrow_accounts.find_one({"id": escrow_id})
+    if not escrow:
+        raise HTTPException(status_code=404, detail="Escrow account not found")
+    
+    # Allow both shipper and carrier to release funds under different conditions
+    if escrow["shipper_id"] != current_user.id and escrow["carrier_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the shipper or carrier can release escrow funds")
+    
+    # Automatic release after delivery confirmation
+    success = await release_escrow_funds(escrow_id, release_percentage, reason)
+    if success:
+        return {"status": "success", "message": f"Released {release_percentage}% of escrow funds"}
+    else:
+        raise HTTPException(status_code=400, detail="Failed to release escrow funds")
+
+@api_router.get("/escrow/my-accounts", response_model=List[EscrowAccount])
+async def get_my_escrow_accounts(current_user: User = Depends(get_current_user)):
+    """Get user's escrow accounts"""
+    accounts = await db.escrow_accounts.find({
+        "$or": [
+            {"shipper_id": current_user.id},
+            {"carrier_id": current_user.id}
+        ]
+    }).sort("created_at", -1).to_list(100)
+    
+    return [EscrowAccount(**account) for account in accounts]
+
+@api_router.post("/invoices/create", response_model=Invoice)
+async def create_invoice(invoice_create: InvoiceCreate, current_user: User = Depends(get_current_user)):
+    """Create a new invoice"""
+    # Validate recipient exists
+    recipient = await db.users.find_one({"id": invoice_create.recipient_id})
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    
+    invoice = await generate_invoice(invoice_create, current_user.id)
+    return invoice
+
+@api_router.post("/invoices/{invoice_id}/send")
+async def send_invoice_to_recipient(invoice_id: str, current_user: User = Depends(get_current_user)):
+    """Send an invoice to the recipient"""
+    invoice = await db.invoices.find_one({"id": invoice_id})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    if invoice["issuer_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only send your own invoices")
+    
+    if invoice["status"] != "draft":
+        raise HTTPException(status_code=400, detail="Invoice has already been sent")
+    
+    success = await send_invoice(invoice_id)
+    if success:
+        return {"status": "success", "message": "Invoice sent successfully"}
+    else:
+        raise HTTPException(status_code=400, detail="Failed to send invoice")
+
+@api_router.get("/invoices/sent", response_model=List[Invoice])
+async def get_sent_invoices(current_user: User = Depends(get_current_user)):
+    """Get invoices sent by the current user"""
+    invoices = await db.invoices.find({
+        "issuer_id": current_user.id
+    }).sort("created_at", -1).to_list(100)
+    
+    return [Invoice(**invoice) for invoice in invoices]
+
+@api_router.get("/invoices/received", response_model=List[Invoice])
+async def get_received_invoices(current_user: User = Depends(get_current_user)):
+    """Get invoices received by the current user"""
+    invoices = await db.invoices.find({
+        "recipient_id": current_user.id
+    }).sort("created_at", -1).to_list(100)
+    
+    return [Invoice(**invoice) for invoice in invoices]
+
+@api_router.post("/invoices/{invoice_id}/pay")
+async def pay_invoice(invoice_id: str, payment_method: str = "trux_credit", 
+                     currency: str = "USD", current_user: User = Depends(get_current_user)):
+    """Pay an invoice"""
+    invoice = await db.invoices.find_one({"id": invoice_id})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    if invoice["recipient_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only pay invoices sent to you")
+    
+    if invoice["status"] not in ["sent", "overdue"]:
+        raise HTTPException(status_code=400, detail="Invoice cannot be paid in its current status")
+    
+    # Handle currency conversion if needed
+    payment_amount = invoice["total_amount"]
+    if invoice["currency"] != currency:
+        conversion = await convert_currency(payment_amount, invoice["currency"], currency)
+        payment_amount = conversion["converted_amount"] + conversion["conversion_fee"]
+    
+    # Process payment
+    if payment_method == "trux_credit":
+        # Check balance
+        user = await db.users.find_one({"id": current_user.id})
+        if user["trux_credit_balance"] < payment_amount:
+            raise HTTPException(status_code=400, detail="Insufficient TruxCredit balance")
+        
+        # Deduct from payer
+        await db.users.update_one(
+            {"id": current_user.id},
+            {"$inc": {"trux_credit_balance": -payment_amount}}
+        )
+        
+        # Add to invoice issuer
+        await db.users.update_one(
+            {"id": invoice["issuer_id"]},
+            {"$inc": {"trux_credit_balance": payment_amount}}
+        )
+        
+        # Record transactions
+        debit_transaction = TruxCreditTransaction(
+            user_id=current_user.id,
+            amount=-payment_amount,
+            transaction_type="debit",
+            description=f"Invoice payment - {invoice['invoice_number']}",
+            related_id=invoice_id
+        )
+        
+        credit_transaction = TruxCreditTransaction(
+            user_id=invoice["issuer_id"],
+            amount=payment_amount,
+            transaction_type="credit",
+            description=f"Invoice payment received - {invoice['invoice_number']}",
+            related_id=invoice_id
+        )
+        
+        await db.trux_credit_transactions.insert_one(debit_transaction.dict())
+        await db.trux_credit_transactions.insert_one(credit_transaction.dict())
+    
+    # Update invoice status
+    await db.invoices.update_one(
+        {"id": invoice_id},
+        {
+            "$set": {
+                "status": "paid",
+                "paid_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Send notifications
+    await create_notification(
+        invoice["issuer_id"],
+        "invoice_paid",
+        "Invoice Paid",
+        f"Invoice {invoice['invoice_number']} has been paid",
+        {"invoice_id": invoice_id, "amount": payment_amount},
+        priority="normal"
+    )
+    
+    return {"status": "success", "message": "Invoice paid successfully"}
+
+@api_router.get("/currencies/rates")
+async def get_currency_rates(base_currency: str = "USD"):
+    """Get current exchange rates"""
+    currencies = ["USD", "EUR", "GBP", "CAD", "JPY"]
+    rates = {}
+    
+    for currency in currencies:
+        if currency != base_currency:
+            rates[currency] = await get_exchange_rate(base_currency, currency)
+    
+    return {
+        "base_currency": base_currency,
+        "rates": rates,
+        "last_updated": datetime.utcnow().isoformat()
+    }
+
+@api_router.post("/currencies/convert")
+async def convert_currency_amount(amount: float, from_currency: str, to_currency: str):
+    """Convert currency amount"""
+    if from_currency == to_currency:
+        return {
+            "original_amount": amount,
+            "converted_amount": amount,
+            "exchange_rate": 1.0,
+            "conversion_fee": 0.0,
+            "total_amount": amount
+        }
+    
+    conversion = await convert_currency(amount, from_currency, to_currency)
+    conversion["total_amount"] = conversion["converted_amount"] + conversion["conversion_fee"]
+    
+    return conversion
+
 # Include the router in the main app
 app.include_router(api_router)
 

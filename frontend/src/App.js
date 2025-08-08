@@ -374,9 +374,9 @@ function App() {
       });
       
       fetchDashboardData();
-      alert('Bid accepted successfully!');
+      toast.success('Bid accepted successfully!');
     } catch (error) {
-      alert(error.response?.data?.detail || 'Failed to accept bid');
+      toast.error(error.response?.data?.detail || 'Failed to accept bid');
     } finally {
       setIsLoading(false);
     }

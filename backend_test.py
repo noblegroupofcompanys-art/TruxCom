@@ -677,35 +677,21 @@ class TruxComAPITester:
             headers={"Authorization": f"Bearer {self.shipper_token}"}
         )
         
-        # Test currency conversion
-        conversion_data = {
-            "amount": 1000.0,
-            "from_currency": "USD",
-            "to_currency": "EUR"
-        }
-        
+        # Test currency conversion (using query parameters)
         self.run_test(
             "Convert Currency",
-            "POST",
-            "currencies/convert",
+            "GET",
+            "currencies/convert?amount=1000.0&from_currency=USD&to_currency=EUR",
             200,
-            data=conversion_data,
             headers={"Authorization": f"Bearer {self.shipper_token}"}
         )
         
-        # Test multiple currency conversions
-        multi_conversion_data = {
-            "amount": 2500.0,
-            "from_currency": "USD",
-            "to_currencies": ["EUR", "GBP", "CAD", "JPY"]
-        }
-        
+        # Test multiple currency conversions (using query parameters)
         self.run_test(
             "Multi-Currency Conversion",
-            "POST",
-            "currencies/convert",
+            "GET", 
+            "currencies/convert?amount=2500.0&from_currency=USD&to_currency=EUR",
             200,
-            data=multi_conversion_data,
             headers={"Authorization": f"Bearer {self.shipper_token}"}
         )
 

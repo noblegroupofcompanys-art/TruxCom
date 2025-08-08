@@ -23,6 +23,10 @@ import MessagingCenter from './components/MessagingCenter';
 // Import new dashboard components
 import AdvancedTrackingDashboard from './components/AdvancedTrackingDashboard';
 import InstapayDashboard from './components/InstapayDashboard';
+import InsuranceMarketplace from './components/InsuranceMarketplace';
+import TrainingHub from './components/TrainingHub';
+import AdminDashboard from './components/AdminDashboard';
+import PlatformOverview from './components/PlatformOverview';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;

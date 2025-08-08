@@ -382,6 +382,68 @@ function App() {
     }
   };
 
+  const handleMarkNotificationRead = async (notificationId) => {
+    try {
+      await axios.post(`${API}/notifications/${notificationId}/mark-read`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setNotifications(prev =>
+        prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+      );
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    const unreadNotifications = notifications.filter(n => !n.read);
+    
+    try {
+      await Promise.all(
+        unreadNotifications.map(n =>
+          axios.post(`${API}/notifications/${n.id}/mark-read`, {}, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+        )
+      );
+      
+      setNotifications(prev =>
+        prev.map(n => ({ ...n, read: true }))
+      );
+    } catch (error) {
+      console.error('Failed to mark notifications as read:', error);
+    }
+  };
+
+  const openChat = (shipment) => {
+    setSelectedShipmentForChat(shipment);
+    setIsChatOpen(true);
+  };
+
+  const openMap = (shipment) => {
+    setSelectedShipmentForMap(shipment);
+    setIsMapOpen(true);
+  };
+
+  // Simulate starting transit for demo
+  const startTransit = async (shipmentId) => {
+    try {
+      // This would normally be done by the driver's mobile app
+      // For demo, we'll just update the status
+      await axios.patch(`${API}/shipments/${shipmentId}`, {
+        status: 'in_transit'
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      fetchDashboardData();
+      toast.success('Transit started! GPS tracking is now active.');
+    } catch (error) {
+      console.error('Failed to start transit:', error);
+    }
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString();
   };

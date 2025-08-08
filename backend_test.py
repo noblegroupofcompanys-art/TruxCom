@@ -927,20 +927,14 @@ class TruxComAPITester:
             print("❌ Skipping admin tests - no admin token")
             return
         
-        # Test KYC document upload
-        kyc_upload_data = {
-            "document_type": "drivers_license",
-            "document_url": "https://example.com/license.jpg",
-            "document_number": "DL123456789",
-            "expiry_date": (datetime.now() + timedelta(days=365)).isoformat()
-        }
+        # Test KYC document upload (using query parameters)
+        kyc_params = f"document_type=drivers_license&document_number=DL123456789&expiry_date={(datetime.now() + timedelta(days=365)).isoformat()}"
         
         success, kyc_response = self.run_test(
             "Upload KYC Document",
             "POST",
-            "admin/kyc/upload-document",
+            f"admin/kyc/upload-document?{kyc_params}",
             200,
-            data=kyc_upload_data,
             headers={"Authorization": f"Bearer {self.driver_token}"}
         )
         

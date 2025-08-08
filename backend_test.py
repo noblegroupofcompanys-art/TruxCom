@@ -774,23 +774,14 @@ class TruxComAPITester:
             headers={"Authorization": f"Bearer {self.shipper_token}"}
         )
         
-        # Test file insurance claim
-        claim_data = {
-            "policy_id": "test-policy-id",
-            "incident_date": datetime.now().isoformat(),
-            "claim_amount": 5000.0,
-            "description": "Cargo damage during transport - electronics damaged by water",
-            "incident_type": "cargo_damage",
-            "related_shipment_id": self.test_shipment_id,
-            "supporting_documents": ["damage_photos.jpg", "police_report.pdf"]
-        }
+        # Test file insurance claim (using query parameters)
+        claim_params = f"policy_id=test-policy-id&incident_date={datetime.now().isoformat()}&claim_amount=5000.0&description=Cargo damage during transport&incident_type=cargo_damage"
         
         success, claim_response = self.run_test(
             "File Insurance Claim",
             "POST",
-            "insurance/claim",
+            f"insurance/claim?{claim_params}",
             200,
-            data=claim_data,
             headers={"Authorization": f"Bearer {self.shipper_token}"}
         )
         

@@ -947,21 +947,16 @@ class TruxComAPITester:
             headers={"Authorization": f"Bearer {self.driver_token}"}
         )
         
-        # Test admin KYC verification
+        # Test admin KYC verification (using query parameters)
         if self.driver_user and admin_token:
-            verify_data = {
-                "verification_status": "verified",
-                "verification_notes": "All documents verified successfully",
-                "verification_level": "enhanced"
-            }
-            
             driver_user_id = self.driver_user.get('user_id', 'test-driver')
+            verify_params = "verification_status=verified&verification_notes=All documents verified successfully&verification_level=enhanced"
+            
             self.run_test(
                 "Admin KYC Verification",
                 "POST",
-                f"admin/kyc/verify/{driver_user_id}",
+                f"admin/kyc/verify/{driver_user_id}?{verify_params}",
                 200,
-                data=verify_data,
                 headers={"Authorization": f"Bearer {admin_token}"}
             )
         

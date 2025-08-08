@@ -232,6 +232,17 @@ function App() {
     }
   };
 
+  const fetchNotifications = async () => {
+    try {
+      const response = await axios.get(`${API}/notifications`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNotifications(response.data);
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    }
+  };
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setIsLoading(true);

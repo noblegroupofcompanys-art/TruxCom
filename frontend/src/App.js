@@ -602,10 +602,21 @@ function App() {
               <div className="w-10 h-10 bg-yellow-400 rounded-lg flex items-center justify-center">
                 <Truck className="w-6 h-6 text-black" />
               </div>
-              <h1 className="text-xl font-bold text-gray-900">TruxCom</h1>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">TruxCom</h1>
+                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                  <div className={`w-2 h-2 rounded-full ${wsConnection ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <span>{wsConnection ? 'Connected' : 'Disconnected'}</span>
+                </div>
+              </div>
             </div>
             
             <div className="flex items-center space-x-4">
+              <NotificationCenter 
+                notifications={notifications}
+                onMarkAsRead={handleMarkNotificationRead}
+                onMarkAllAsRead={handleMarkAllNotificationsRead}
+              />
               <div className="flex items-center space-x-2">
                 <User className="w-4 h-4 text-gray-600" />
                 <span className="text-sm text-gray-700">{user.email}</span>

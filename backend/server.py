@@ -9,10 +9,11 @@ from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timedelta
 import hashlib
+from datetime import datetime, timedelta
 import jwt
-from passlib.context import CryptContext
+# Remove passlib for now and use simple hashlib
+# from passlib.context import CryptContext
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -33,7 +34,8 @@ SECRET_KEY = "truxcom-secret-key-change-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 security = HTTPBearer()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Temporarily use simple hash instead of bcrypt
+# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # User Models
 class UserRole(str):
@@ -133,10 +135,12 @@ class Token(BaseModel):
 
 # Utility functions
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    # Simple hash verification using hashlib
+    return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    # Simple hash using hashlib (temporary replacement for bcrypt)
+    return hashlib.sha256(password.encode()).hexdigest()
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()

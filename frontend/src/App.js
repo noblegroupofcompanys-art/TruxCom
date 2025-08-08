@@ -748,11 +748,24 @@ function App() {
                         <div>
                           <p className="font-medium">{shipment.origin_address} → {shipment.destination_address}</p>
                           <p className="text-sm text-gray-500">{shipment.cargo_description}</p>
+                          {shipment.route_progress > 0 && (
+                            <div className="flex items-center space-x-2 mt-1">
+                              <Progress value={shipment.route_progress * 100} className="w-20 h-2" />
+                              <span className="text-xs text-gray-500">{Math.round(shipment.route_progress * 100)}%</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <Badge className={getStatusBadgeColor(shipment.status)}>
-                        {shipment.status.replace('_', ' ').toUpperCase()}
-                      </Badge>
+                      <div className="flex items-center space-x-2">
+                        <Badge className={getStatusBadgeColor(shipment.status)}>
+                          {shipment.status.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                        {shipment.status === 'in_transit' && (
+                          <Button size="sm" variant="outline" onClick={() => openMap(shipment)}>
+                            <Navigation className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

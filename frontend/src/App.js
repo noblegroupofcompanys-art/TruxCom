@@ -30,7 +30,16 @@ function App() {
   const [shipments, setShipments] = useState([]);
   const [bids, setBids] = useState([]);
   const [stats, setStats] = useState({});
+  const [notifications, setNotifications] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Real-time features
+  const [wsConnection, setWsConnection] = useState(null);
+  const [selectedShipmentForChat, setSelectedShipmentForChat] = useState(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [selectedShipmentForMap, setSelectedShipmentForMap] = useState(null);
+  const [isMapOpen, setIsMapOpen] = useState(false);
+  const wsRef = useRef(null);
 
   // Auth Forms
   const [authMode, setAuthMode] = useState('login');

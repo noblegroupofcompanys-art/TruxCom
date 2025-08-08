@@ -906,6 +906,16 @@ function App() {
                       </div>
                     </div>
                     
+                    {shipment.route_progress > 0 && (
+                      <div className="mt-4 space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Delivery Progress</span>
+                          <span>{Math.round(shipment.route_progress * 100)}%</span>
+                        </div>
+                        <Progress value={shipment.route_progress * 100} className="h-2" />
+                      </div>
+                    )}
+                    
                     {shipment.special_requirements && (
                       <div className="mt-4">
                         <Label className="text-sm text-gray-500">Special Requirements</Label>

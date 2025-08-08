@@ -642,7 +642,11 @@ function App() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-10">
+            <TabsTrigger value="overview">
+              <TrendingUp className="w-4 h-4 mr-1" />
+              Overview
+            </TabsTrigger>
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="shipments">
               {user.user_type === 'shipper' ? 'My Shipments' : 'Available Loads'}
@@ -650,17 +654,28 @@ function App() {
             <TabsTrigger value="tracking">Live Tracking</TabsTrigger>
             <TabsTrigger value="advanced-tracking">
               <Target className="w-4 h-4 mr-1" />
-              Advanced Tracking
+              Advanced
             </TabsTrigger>
             <TabsTrigger value="instapay">
               <Wallet className="w-4 h-4 mr-1" />
               Instapay
             </TabsTrigger>
+            <TabsTrigger value="insurance">
+              <Shield className="w-4 h-4 mr-1" />
+              Insurance
+            </TabsTrigger>
+            <TabsTrigger value="training">
+              <BookOpen className="w-4 h-4 mr-1" />
+              Training
+            </TabsTrigger>
+            {(user.user_type === 'admin' || user.user_type === 'super_admin') && (
+              <TabsTrigger value="admin">
+                <FileText className="w-4 h-4 mr-1" />
+                Admin
+              </TabsTrigger>
+            )}
             <TabsTrigger value="bids">
               {user.user_type === 'shipper' ? 'Manage Bids' : 'My Bids'}
-            </TabsTrigger>
-            <TabsTrigger value="create">
-              {user.user_type === 'shipper' ? 'Create Shipment' : 'Find Loads'}
             </TabsTrigger>
           </TabsList>
 

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 class TruxComAPITester:
-    def __init__(self, base_url="https://af68c143-199e-43f3-8eac-7889330d786e.preview.emergentagent.com"):
+    def __init__(self, base_url="https://2ba051be-5cbe-4e77-9c34-ddeb4982ee1a.preview.emergentagent.com"):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.shipper_token = None

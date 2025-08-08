@@ -277,6 +277,11 @@ function App() {
     setShipments([]);
     setBids([]);
     setStats({});
+    setNotifications([]);
+    
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
   };
 
   const handleCreateShipment = async (e) => {

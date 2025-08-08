@@ -13,12 +13,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './components/ui/dialog';
 import { Progress } from './components/ui/progress';
 import { toast } from 'sonner';
-import { Truck, Package, MapPin, Calendar, DollarSign, User, Bell, LogOut, Plus, Eye, CheckCircle, MessageSquare, Navigation, Clock } from 'lucide-react';
+import { Truck, Package, MapPin, Calendar, DollarSign, User, Bell, LogOut, Plus, Eye, CheckCircle, MessageSquare, Navigation, Clock, Target, Wallet, Shield, FileText, AlertTriangle, TrendingUp } from 'lucide-react';
 
 // Import new components
 import MapView from './components/MapView';
 import NotificationCenter from './components/NotificationCenter';
 import MessagingCenter from './components/MessagingCenter';
+
+// Import new dashboard components
+import AdvancedTrackingDashboard from './components/AdvancedTrackingDashboard';
+import InstapayDashboard from './components/InstapayDashboard';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;

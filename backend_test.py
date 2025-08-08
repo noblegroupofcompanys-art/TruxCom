@@ -1293,14 +1293,27 @@ class TruxComAPITester:
 
     def run_all_tests(self):
         """Run all test suites"""
-        print("🚀 Starting TruxCom API Testing Suite")
+        print("🚀 Starting TruxCom API Testing Suite - Platform Enhancement Features")
         print(f"🌐 Testing against: {self.api_url}")
         
         try:
-            # Run test suites in order
+            # Run core test suites first
             self.test_auth_endpoints()
             self.test_shipment_endpoints()
             self.test_bid_endpoints()
+            
+            # Run Platform Enhancement test suites
+            print("\n" + "="*60)
+            print("TESTING PLATFORM ENHANCEMENT FEATURES")
+            print("="*60)
+            
+            self.test_insurance_marketplace()
+            self.test_training_hub()
+            self.test_admin_tools()
+            self.test_analytics_system()
+            self.test_pricing_management()
+            
+            # Run remaining core tests
             self.test_advanced_gps_tracking()
             self.test_instapay_system()
             self.test_multi_currency_support()

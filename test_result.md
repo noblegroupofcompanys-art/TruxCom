@@ -320,11 +320,7 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Advanced Tracking Dashboard"
-    - "Geofence Management UI"
-    - "Instapay Dashboard"
-    - "Currency Selector UI"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"

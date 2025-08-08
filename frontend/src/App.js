@@ -638,12 +638,20 @@ function App() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="shipments">
               {user.user_type === 'shipper' ? 'My Shipments' : 'Available Loads'}
             </TabsTrigger>
             <TabsTrigger value="tracking">Live Tracking</TabsTrigger>
+            <TabsTrigger value="advanced-tracking">
+              <Target className="w-4 h-4 mr-1" />
+              Advanced Tracking
+            </TabsTrigger>
+            <TabsTrigger value="instapay">
+              <Wallet className="w-4 h-4 mr-1" />
+              Instapay
+            </TabsTrigger>
             <TabsTrigger value="bids">
               {user.user_type === 'shipper' ? 'Manage Bids' : 'My Bids'}
             </TabsTrigger>

@@ -480,7 +480,11 @@ class GPSLocation(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     speed: Optional[float] = 0.0
     heading: Optional[float] = 0.0
+    altitude: Optional[float] = None
+    accuracy: Optional[float] = None
     geofence_events: List[str] = []  # "entered_pickup", "left_pickup", "arrived_delivery"
+    route_deviation_distance: Optional[float] = None  # meters off planned route
+    temperature: Optional[float] = None  # for temperature monitoring
 
 class GeofenceCreate(BaseModel):
     shipment_id: str
@@ -488,7 +492,10 @@ class GeofenceCreate(BaseModel):
     latitude: float
     longitude: float
     radius: float  # in meters
-    event_type: str  # "pickup", "delivery", "rest_area"
+    event_type: str  # "pickup", "delivery", "rest_area", "checkpoint", "restricted_zone"
+    alert_on_entry: bool = True
+    alert_on_exit: bool = True
+    notification_recipients: List[str] = []  # user IDs to notify
 
 class Geofence(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -498,8 +505,43 @@ class Geofence(BaseModel):
     longitude: float
     radius: float
     event_type: str
+    alert_on_entry: bool = True
+    alert_on_exit: bool = True
+    notification_recipients: List[str] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     triggered_at: Optional[datetime] = None
+    active: bool = True
+
+class GeofenceEvent(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    geofence_id: str
+    shipment_id: str
+    driver_id: str
+    event_type: str  # "entry", "exit"
+    location: Dict[str, float]  # {"latitude": x, "longitude": y}
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    processed: bool = False
+
+class RouteDeviation(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    shipment_id: str
+    driver_id: str
+    deviation_distance: float  # meters
+    deviation_duration: int  # seconds
+    current_location: Dict[str, float]
+    planned_route_point: Dict[str, float]
+    severity: str  # "minor", "moderate", "major"
+    acknowledged: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ETACalculation(BaseModel):
+    shipment_id: str
+    current_eta: datetime
+    original_eta: datetime
+    delay_minutes: int  # positive for delay, negative for early
+    confidence: float  # 0.0 to 1.0
+    factors: List[str]  # ["traffic", "weather", "route_change", "driver_break"]
+    last_updated: datetime = Field(default_factory=datetime.utcnow)
 
 # Message Models (Enhanced)
 class MessageCreate(BaseModel):

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import axios from 'axios';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './components/ui/card';
@@ -11,7 +11,14 @@ import { Badge } from './components/ui/badge';
 import { Separator } from './components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './components/ui/dialog';
-import { Truck, Package, MapPin, Calendar, DollarSign, User, Bell, LogOut, Plus, Eye, CheckCircle } from 'lucide-react';
+import { Progress } from './components/ui/progress';
+import { toast } from 'sonner';
+import { Truck, Package, MapPin, Calendar, DollarSign, User, Bell, LogOut, Plus, Eye, CheckCircle, MessageSquare, Navigation, Clock } from 'lucide-react';
+
+// Import new components
+import MapView from './components/MapView';
+import NotificationCenter from './components/NotificationCenter';
+import MessagingCenter from './components/MessagingCenter';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;

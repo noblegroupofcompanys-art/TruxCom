@@ -1026,23 +1026,39 @@ function App() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="origin">Origin Address</Label>
-                        <Input
-                          id="origin"
-                          value={shipmentForm.origin_address}
-                          onChange={(e) => setShipmentForm({...shipmentForm, origin_address: e.target.value})}
-                          placeholder="Enter pickup address"
-                          required
-                        />
+                        <Select value={shipmentForm.origin_address} onValueChange={(value) => setShipmentForm({...shipmentForm, origin_address: value})}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select origin city" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="New York, NY">New York, NY</SelectItem>
+                            <SelectItem value="Los Angeles, CA">Los Angeles, CA</SelectItem>
+                            <SelectItem value="Chicago, IL">Chicago, IL</SelectItem>
+                            <SelectItem value="Houston, TX">Houston, TX</SelectItem>
+                            <SelectItem value="Miami, FL">Miami, FL</SelectItem>
+                            <SelectItem value="Atlanta, GA">Atlanta, GA</SelectItem>
+                            <SelectItem value="Denver, CO">Denver, CO</SelectItem>
+                            <SelectItem value="Seattle, WA">Seattle, WA</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div>
                         <Label htmlFor="destination">Destination Address</Label>
-                        <Input
-                          id="destination"
-                          value={shipmentForm.destination_address}
-                          onChange={(e) => setShipmentForm({...shipmentForm, destination_address: e.target.value})}
-                          placeholder="Enter delivery address"
-                          required
-                        />
+                        <Select value={shipmentForm.destination_address} onValueChange={(value) => setShipmentForm({...shipmentForm, destination_address: value})}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select destination city" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="New York, NY">New York, NY</SelectItem>
+                            <SelectItem value="Los Angeles, CA">Los Angeles, CA</SelectItem>
+                            <SelectItem value="Chicago, IL">Chicago, IL</SelectItem>
+                            <SelectItem value="Houston, TX">Houston, TX</SelectItem>
+                            <SelectItem value="Miami, FL">Miami, FL</SelectItem>
+                            <SelectItem value="Atlanta, GA">Atlanta, GA</SelectItem>
+                            <SelectItem value="Denver, CO">Denver, CO</SelectItem>
+                            <SelectItem value="Seattle, WA">Seattle, WA</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                     

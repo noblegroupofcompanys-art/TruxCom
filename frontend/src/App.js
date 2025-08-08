@@ -75,10 +75,120 @@ function App() {
     estimated_delivery: ''
   });
 
+  // WebSocket connection
+  useEffect(() => {
+    if (token && user) {
+      connectWebSocket();
+    }
+    
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [token, user]);
+
+  const connectWebSocket = () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+
+    const wsUrl = `${BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/${user.id}`;
+    
+    try {
+      wsRef.current = new WebSocket(wsUrl);
+
+      wsRef.current.onopen = () => {
+        console.log('WebSocket connected');
+        setWsConnection(wsRef.current);
+        
+        // Send ping to keep connection alive
+        const pingInterval = setInterval(() => {
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 30000);
+
+        wsRef.current.pingInterval = pingInterval;
+      };
+
+      wsRef.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleWebSocketMessage(data);
+        } catch (error) {
+          console.error('WebSocket message error:', error);
+        }
+      };
+
+      wsRef.current.onclose = () => {
+        console.log('WebSocket disconnected');
+        setWsConnection(null);
+        
+        if (wsRef.current?.pingInterval) {
+          clearInterval(wsRef.current.pingInterval);
+        }
+        
+        // Reconnect after 3 seconds if user is still logged in
+        if (token && user) {
+          setTimeout(connectWebSocket, 3000);
+        }
+      };
+
+      wsRef.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+    } catch (error) {
+      console.error('WebSocket connection failed:', error);
+    }
+  };
+
+  const handleWebSocketMessage = (data) => {
+    switch (data.type) {
+      case 'notification':
+        setNotifications(prev => [data.data, ...prev]);
+        toast(data.data.title, {
+          description: data.data.message,
+          action: {
+            label: "View",
+            onClick: () => console.log("Notification clicked"),
+          },
+        });
+        break;
+        
+      case 'location_update':
+        // Update shipment location in real-time
+        setShipments(prev => 
+          prev.map(shipment => 
+            shipment.id === data.shipment_id 
+              ? { ...shipment, current_location: data.location, route_progress: data.progress }
+              : shipment
+          )
+        );
+        break;
+        
+      case 'new_message':
+        // Handle new messages if chat is open for this shipment
+        if (selectedShipmentForChat?.id === data.data.shipment_id) {
+          fetchDashboardData(); // Refresh to show new message
+        }
+        break;
+        
+      case 'pong':
+        // Handle ping response
+        break;
+        
+      default:
+        console.log('Unknown WebSocket message:', data);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchUser();
       fetchDashboardData();
+      fetchNotifications();
     }
   }, [token]);
 

@@ -864,6 +864,25 @@ function App() {
             </Card>
           </TabsContent>
 
+          {/* Advanced Tracking Dashboard */}
+          <TabsContent value="advanced-tracking" className="space-y-6">
+            <AdvancedTrackingDashboard
+              user={user}
+              token={token}
+              shipments={shipments}
+              onRefreshShipments={fetchShipments}
+            />
+          </TabsContent>
+
+          {/* Instapay Dashboard */}
+          <TabsContent value="instapay" className="space-y-6">
+            <InstapayDashboard
+              user={user}
+              token={token}
+              shipments={shipments}
+            />
+          </TabsContent>
+
           {/* Shipments - Enhanced with real-time features */}
           <TabsContent value="shipments" className="space-y-6">
             <div className="grid gap-6">

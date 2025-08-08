@@ -3995,6 +3995,445 @@ async def get_course_certificate(enrollment_id: str, current_user: User = Depend
     
     return certificate_data
 
+# Advanced Admin Tools Routes
+@api_router.post("/admin/kyc/upload-document")
+async def upload_kyc_document(
+    document_type: str,
+    document_number: Optional[str] = None,
+    expiry_date: Optional[datetime] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Upload KYC document for verification"""
+    # In a real implementation, handle file upload
+    document_url = f"/documents/kyc/{current_user.id}_{document_type}_{datetime.utcnow().timestamp()}.pdf"
+    
+    document = KYCDocument(
+        user_id=current_user.id,
+        document_type=document_type,
+        document_url=document_url,
+        document_number=document_number,
+        expiry_date=expiry_date
+    )
+    
+    await db.kyc_documents.insert_one(document.dict())
+    
+    # Update or create KYC verification record
+    kyc_verification = await db.kyc_verifications.find_one({"user_id": current_user.id})
+    
+    if not kyc_verification:
+        verification = KYCVerification(
+            user_id=current_user.id,
+            required_documents=["drivers_license", "passport", "business_license"],
+            submitted_documents=[document_type]
+        )
+        await db.kyc_verifications.insert_one(verification.dict())
+    else:
+        # Update submitted documents
+        submitted_docs = kyc_verification.get("submitted_documents", [])
+        if document_type not in submitted_docs:
+            submitted_docs.append(document_type)
+        
+        await db.kyc_verifications.update_one(
+            {"user_id": current_user.id},
+            {"$set": {"submitted_documents": submitted_docs}}
+        )
+    
+    return {"message": "Document uploaded successfully", "document_id": document.id}
+
+@api_router.get("/admin/kyc/status", response_model=KYCVerification)
+async def get_kyc_status(current_user: User = Depends(get_current_user)):
+    """Get user's KYC verification status"""
+    kyc_verification = await db.kyc_verifications.find_one({"user_id": current_user.id})
+    
+    if not kyc_verification:
+        # Create initial verification record
+        verification = KYCVerification(
+            user_id=current_user.id,
+            required_documents=["drivers_license", "business_license"],
+            submitted_documents=[]
+        )
+        await db.kyc_verifications.insert_one(verification.dict())
+        return verification
+    
+    # Calculate verification score
+    score = await calculate_kyc_score(current_user.id)
+    await db.kyc_verifications.update_one(
+        {"user_id": current_user.id},
+        {"$set": {"verification_score": score}}
+    )
+    
+    return KYCVerification(**kyc_verification)
+
+@api_router.post("/admin/kyc/verify/{user_id}")
+async def admin_verify_kyc(
+    user_id: str,
+    verification_status: str,
+    notes: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Admin endpoint to verify user KYC"""
+    # Check if user is admin
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    kyc_verification = await db.kyc_verifications.find_one({"user_id": user_id})
+    if not kyc_verification:
+        raise HTTPException(status_code=404, detail="KYC record not found")
+    
+    verification_score = await calculate_kyc_score(user_id)
+    
+    update_data = {
+        "overall_status": verification_status,
+        "verification_score": verification_score,
+        "verification_notes": notes,
+        "approved_by": current_user.id,
+        "approved_at": datetime.utcnow()
+    }
+    
+    # Set verification flags based on status
+    if verification_status == "verified":
+        update_data.update({
+            "identity_verified": True,
+            "address_verified": True,
+            "business_verified": True,
+            "risk_level": "low" if verification_score > 80 else "medium"
+        })
+    
+    await db.kyc_verifications.update_one(
+        {"user_id": user_id},
+        {"$set": update_data}
+    )
+    
+    return {"message": "KYC verification updated successfully"}
+
+@api_router.post("/admin/disputes/create", response_model=DisputeCase)
+async def create_dispute_case(
+    respondent_id: str,
+    related_type: str,
+    related_id: str,
+    dispute_type: str,
+    title: str,
+    description: str,
+    amount_disputed: Optional[float] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a dispute case"""
+    case_number = f"DSP-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+    
+    dispute_case = DisputeCase(
+        case_number=case_number,
+        complainant_id=current_user.id,
+        respondent_id=respondent_id,
+        related_type=related_type,
+        related_id=related_id,
+        dispute_type=dispute_type,
+        title=title,
+        description=description,
+        amount_disputed=amount_disputed
+    )
+    
+    # Auto-assign priority
+    dispute_case.priority = await auto_assign_dispute_priority(dispute_case)
+    
+    await db.dispute_cases.insert_one(dispute_case.dict())
+    
+    # Send notification to respondent
+    await create_notification(
+        respondent_id,
+        "dispute_created",
+        "New Dispute Case",
+        f"A dispute case has been filed against you: {title}",
+        {"dispute_id": dispute_case.id, "case_number": case_number},
+        priority="normal"
+    )
+    
+    return dispute_case
+
+@api_router.get("/admin/disputes/my-cases", response_model=List[DisputeCase])
+async def get_user_dispute_cases(current_user: User = Depends(get_current_user)):
+    """Get user's dispute cases"""
+    cases = await db.dispute_cases.find({
+        "$or": [
+            {"complainant_id": current_user.id},
+            {"respondent_id": current_user.id}
+        ]
+    }).sort("created_at", -1).to_list(100)
+    
+    return [DisputeCase(**case) for case in cases]
+
+@api_router.post("/admin/disputes/{dispute_id}/message", response_model=DisputeMessage)
+async def add_dispute_message(
+    dispute_id: str,
+    message: str,
+    is_internal: bool = False,
+    current_user: User = Depends(get_current_user)
+):
+    """Add message to dispute case"""
+    dispute_case = await db.dispute_cases.find_one({"id": dispute_id})
+    if not dispute_case:
+        raise HTTPException(status_code=404, detail="Dispute case not found")
+    
+    # Check if user has access to this dispute
+    if (dispute_case["complainant_id"] != current_user.id and 
+        dispute_case["respondent_id"] != current_user.id and
+        current_user.user_type not in ["admin", "super_admin"]):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    sender_type = "admin" if current_user.user_type in ["admin", "super_admin"] else (
+        "complainant" if dispute_case["complainant_id"] == current_user.id else "respondent"
+    )
+    
+    dispute_message = DisputeMessage(
+        dispute_id=dispute_id,
+        sender_id=current_user.id,
+        sender_type=sender_type,
+        message=message,
+        is_internal=is_internal
+    )
+    
+    await db.dispute_messages.insert_one(dispute_message.dict())
+    
+    return dispute_message
+
+@api_router.get("/admin/commission/rules", response_model=List[CommissionRule])
+async def get_commission_rules(current_user: User = Depends(get_current_user)):
+    """Get commission rules (admin only)"""
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    rules = await db.commission_rules.find({"active": True}).to_list(100)
+    return [CommissionRule(**rule) for rule in rules]
+
+@api_router.post("/admin/commission/calculate")
+async def calculate_commission_preview(
+    transaction_amount: float,
+    service_type: str,
+    user_type: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Calculate commission preview"""
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    commission_data = await calculate_commission(transaction_amount, service_type, user_type)
+    return commission_data
+
+# Advanced Analytics Routes
+@api_router.get("/analytics/dashboard")
+async def get_analytics_dashboard(
+    period: str = "monthly",
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Get analytics dashboard data"""
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    if not start_date:
+        start_date = datetime.utcnow() - timedelta(days=30)
+    if not end_date:
+        end_date = datetime.utcnow()
+    
+    # Generate comprehensive analytics
+    revenue_analytics = await generate_revenue_analytics(period, start_date, end_date)
+    
+    # Get key metrics
+    total_users = await db.users.count_documents({})
+    active_shipments = await db.shipments.count_documents({"status": {"$in": ["in_transit", "booked"]}})
+    total_transactions = await db.commission_transactions.count_documents({"status": "paid"})
+    
+    # Get growth metrics (simplified)
+    previous_period_start = start_date - (end_date - start_date)
+    previous_revenue = await generate_revenue_analytics(period, previous_period_start, start_date)
+    
+    growth_rate = 0.0
+    if previous_revenue["total_revenue"] > 0:
+        growth_rate = ((revenue_analytics["total_revenue"] - previous_revenue["total_revenue"]) / 
+                      previous_revenue["total_revenue"]) * 100
+    
+    dashboard_data = {
+        "overview": {
+            "total_revenue": revenue_analytics["total_revenue"],
+            "total_users": total_users,
+            "active_shipments": active_shipments,
+            "total_transactions": total_transactions,
+            "growth_rate": round(growth_rate, 2)
+        },
+        "revenue_breakdown": revenue_analytics["revenue_by_source"],
+        "period": {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "period_type": period
+        },
+        "generated_at": datetime.utcnow().isoformat()
+    }
+    
+    return dashboard_data
+
+@api_router.get("/analytics/predictive/{insight_type}")
+async def get_predictive_insights(
+    insight_type: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get AI-powered predictive insights"""
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    if insight_type not in ["demand_forecast", "price_prediction", "risk_assessment"]:
+        raise HTTPException(status_code=400, detail="Invalid insight type")
+    
+    insights = await generate_predictive_insights(insight_type)
+    
+    # Create insight record
+    predictive_insight = PredictiveInsight(
+        insight_type=insight_type,
+        prediction_data=insights,
+        confidence_score=random.uniform(0.75, 0.95),  # Mock confidence
+        time_horizon="7_days",
+        model_version="v1.0",
+        expires_at=datetime.utcnow() + timedelta(days=7)
+    )
+    
+    await db.predictive_insights.insert_one(predictive_insight.dict())
+    
+    return insights
+
+@api_router.post("/analytics/reports/generate")
+async def generate_analytics_report(
+    report_type: str,
+    report_period_start: datetime,
+    report_period_end: datetime,
+    parameters: Dict[str, Any] = {},
+    current_user: User = Depends(get_current_user)
+):
+    """Generate custom analytics report"""
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    report_name = f"{report_type}_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    
+    # Generate report data based on type
+    if report_type == "financial":
+        report_data = await generate_revenue_analytics("custom", report_period_start, report_period_end)
+    elif report_type == "operational":
+        # Mock operational report
+        report_data = {
+            "shipment_metrics": {
+                "total_shipments": await db.shipments.count_documents({
+                    "created_at": {"$gte": report_period_start, "$lte": report_period_end}
+                }),
+                "completed_shipments": await db.shipments.count_documents({
+                    "status": "delivered",
+                    "created_at": {"$gte": report_period_start, "$lte": report_period_end}
+                })
+            }
+        }
+    else:
+        report_data = {"message": "Report type not implemented"}
+    
+    # Create report record
+    analytics_report = AnalyticsReport(
+        report_name=report_name,
+        report_type=report_type,
+        report_data=report_data,
+        parameters=parameters,
+        generated_by=current_user.id,
+        report_period_start=report_period_start,
+        report_period_end=report_period_end,
+        file_url=f"/reports/{report_name}.pdf"
+    )
+    
+    await db.analytics_reports.insert_one(analytics_report.dict())
+    
+    return {
+        "report_id": analytics_report.id,
+        "report_name": report_name,
+        "status": "generated",
+        "download_url": analytics_report.file_url
+    }
+
+# Admin Pricing Management Routes
+@api_router.get("/admin/pricing/templates", response_model=List[PricingTemplate])
+async def get_pricing_templates(current_user: User = Depends(get_current_user)):
+    """Get all pricing templates (admin only)"""
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    templates = await db.pricing_templates.find({"active": True}).to_list(100)
+    return [PricingTemplate(**template) for template in templates]
+
+@api_router.post("/admin/pricing/templates", response_model=PricingTemplate)
+async def create_pricing_template(
+    service_type: str,
+    template_name: str,
+    pricing_structure: Dict[str, Any],
+    currency: str = "USD",
+    current_user: User = Depends(get_current_user)
+):
+    """Create new pricing template"""
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    template = PricingTemplate(
+        service_type=service_type,
+        template_name=template_name,
+        pricing_structure=pricing_structure,
+        currency=currency,
+        created_by=current_user.id
+    )
+    
+    await db.pricing_templates.insert_one(template.dict())
+    return template
+
+@api_router.put("/admin/pricing/update/{service_type}")
+async def update_service_pricing(
+    service_type: str,
+    service_id: str,
+    new_price: float,
+    current_user: User = Depends(get_current_user)
+):
+    """Update pricing for specific service"""
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Update pricing based on service type
+    if service_type == "training":
+        await db.training_courses.update_one(
+            {"id": service_id},
+            {"$set": {"price": new_price, "updated_at": datetime.utcnow()}}
+        )
+    elif service_type == "insurance":
+        await db.insurance_plans.update_one(
+            {"id": service_id},
+            {"$set": {"base_premium": new_price, "updated_at": datetime.utcnow()}}
+        )
+    
+    # Update dynamic pricing if it exists
+    await update_dynamic_pricing(service_id, service_type)
+    
+    return {"message": f"Pricing updated for {service_type} service", "new_price": new_price}
+
+@api_router.get("/admin/pricing/dynamic/{service_id}")
+async def get_dynamic_pricing(
+    service_id: str,
+    service_type: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get dynamic pricing information"""
+    if current_user.user_type not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    pricing_record = await db.dynamic_pricing.find_one({
+        "service_id": service_id,
+        "service_type": service_type
+    })
+    
+    if not pricing_record:
+        raise HTTPException(status_code=404, detail="Dynamic pricing record not found")
+    
+    return DynamicPricing(**pricing_record)
+
 # Include the router in the main app
 app.include_router(api_router)
 

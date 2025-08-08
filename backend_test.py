@@ -1098,24 +1098,14 @@ class TruxComAPITester:
             headers={"Authorization": f"Bearer {admin_token}"}
         )
         
-        # Test generate analytics report
-        report_data = {
-            "report_type": "financial",
-            "report_period_start": (datetime.now() - timedelta(days=30)).isoformat(),
-            "report_period_end": datetime.now().isoformat(),
-            "parameters": {
-                "include_revenue": True,
-                "include_costs": True,
-                "breakdown_by_service": True
-            }
-        }
+        # Test generate analytics report (using query parameters)
+        report_params = f"report_type=financial&report_period_start={(datetime.now() - timedelta(days=30)).isoformat()}&report_period_end={datetime.now().isoformat()}"
         
         success, report_response = self.run_test(
             "Generate Analytics Report",
             "POST",
-            "analytics/reports/generate",
+            f"analytics/reports/generate?{report_params}",
             200,
-            data=report_data,
             headers={"Authorization": f"Bearer {admin_token}"}
         )
         

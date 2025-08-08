@@ -868,9 +868,21 @@ function App() {
                           {shipment.cargo_description} • {shipment.cargo_weight}kg • {shipment.cargo_dimensions}
                         </CardDescription>
                       </div>
-                      <Badge className={getStatusBadgeColor(shipment.status)}>
-                        {shipment.status.replace('_', ' ').toUpperCase()}
-                      </Badge>
+                      <div className="flex items-center space-x-2">
+                        <Badge className={getStatusBadgeColor(shipment.status)}>
+                          {shipment.status.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                        {(shipment.status === 'booked' || shipment.status === 'in_transit') && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => openChat(shipment)}>
+                              <MessageSquare className="w-4 h-4" />
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => openMap(shipment)}>
+                              <Navigation className="w-4 h-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   

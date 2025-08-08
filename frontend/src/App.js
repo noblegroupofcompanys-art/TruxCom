@@ -870,7 +870,7 @@ function App() {
               user={user}
               token={token}
               shipments={shipments}
-              onRefreshShipments={loadShipments}
+              onRefreshShipments={fetchDashboardData}
             />
           </TabsContent>
 

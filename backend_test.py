@@ -731,25 +731,12 @@ class TruxComAPITester:
             headers={"Authorization": f"Bearer {self.shipper_token}"}
         )
         
-        # Test generate insurance quote
-        quote_data = {
-            "plan_id": "test-plan-id",
-            "coverage_amount": 100000.0,
-            "deductible": 1000.0,
-            "risk_factors": {
-                "years_experience": 5,
-                "vehicle_age": 3,
-                "high_risk_routes": False,
-                "previous_claims": 0
-            }
-        }
-        
+        # Test generate insurance quote (using query parameters)
         success, quote_response = self.run_test(
             "Generate Insurance Quote",
             "POST",
-            "insurance/quote",
+            "insurance/quote?plan_id=test-plan-id&coverage_amount=100000.0",
             200,
-            data=quote_data,
             headers={"Authorization": f"Bearer {self.shipper_token}"}
         )
         

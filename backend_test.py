@@ -960,24 +960,14 @@ class TruxComAPITester:
                 headers={"Authorization": f"Bearer {admin_token}"}
             )
         
-        # Test create dispute case
-        dispute_data = {
-            "respondent_id": self.driver_user.get('user_id', 'test-driver') if self.driver_user else "test-driver",
-            "related_type": "shipment",
-            "related_id": self.test_shipment_id or "test-shipment",
-            "dispute_type": "payment",
-            "title": "Payment dispute for shipment services",
-            "description": "Driver claims payment was not received for completed shipment",
-            "amount_disputed": 2500.0,
-            "evidence_urls": ["receipt.pdf", "communication.png"]
-        }
+        # Test create dispute case (using query parameters)
+        dispute_params = f"respondent_id={self.driver_user.get('user_id', 'test-driver') if self.driver_user else 'test-driver'}&related_type=shipment&related_id={self.test_shipment_id or 'test-shipment'}&dispute_type=payment&title=Payment dispute for shipment services&description=Driver claims payment was not received for completed shipment&amount_disputed=2500.0"
         
         success, dispute_response = self.run_test(
             "Create Dispute Case",
             "POST",
-            "admin/disputes/create",
+            f"admin/disputes/create?{dispute_params}",
             200,
-            data=dispute_data,
             headers={"Authorization": f"Bearer {self.shipper_token}"}
         )
         

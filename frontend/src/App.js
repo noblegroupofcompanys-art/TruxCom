@@ -773,7 +773,86 @@ function App() {
             </Card>
           </TabsContent>
 
-          {/* Shipments */}
+          {/* Live Tracking Tab */}
+          <TabsContent value="tracking" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Live GPS Tracking</CardTitle>
+                <CardDescription>Real-time location tracking for active shipments</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-6">
+                  {shipments
+                    .filter(s => s.status === 'in_transit' || s.status === 'booked')
+                    .map((shipment) => (
+                    <Card key={shipment.id} className="overflow-hidden">
+                      <CardHeader className="pb-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <CardTitle className="text-lg">{shipment.origin_address} → {shipment.destination_address}</CardTitle>
+                            <CardDescription>{shipment.cargo_description}</CardDescription>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Badge className={getStatusBadgeColor(shipment.status)}>
+                              {shipment.status.replace('_', ' ').toUpperCase()}
+                            </Badge>
+                            <Button size="sm" onClick={() => openChat(shipment)}>
+                              <MessageSquare className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        {shipment.route_progress > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span>Progress</span>
+                              <span>{Math.round(shipment.route_progress * 100)}%</span>
+                            </div>
+                            <Progress value={shipment.route_progress * 100} className="h-2" />
+                          </div>
+                        )}
+                      </CardHeader>
+                      
+                      <CardContent className="p-0">
+                        <MapView 
+                          shipment={shipment}
+                          currentLocation={shipment.current_location}
+                          className="h-64"
+                        />
+                      </CardContent>
+                      
+                      {shipment.current_location && (
+                        <CardFooter className="pt-3">
+                          <div className="flex items-center space-x-4 text-sm text-gray-600">
+                            <div className="flex items-center space-x-1">
+                              <Clock className="w-4 h-4" />
+                              <span>Updated: {new Date(shipment.current_location.timestamp).toLocaleTimeString()}</span>
+                            </div>
+                            {shipment.current_location.speed && (
+                              <div className="flex items-center space-x-1">
+                                <Navigation className="w-4 h-4" />
+                                <span>Speed: {shipment.current_location.speed.toFixed(1)} km/h</span>
+                              </div>
+                            )}
+                          </div>
+                        </CardFooter>
+                      )}
+                    </Card>
+                  ))}
+                  
+                  {shipments.filter(s => s.status === 'in_transit' || s.status === 'booked').length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      <Navigation className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                      <p className="text-lg mb-2">No Active Shipments</p>
+                      <p>Shipments in transit will appear here with live GPS tracking</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Shipments - Enhanced with real-time features */}
           <TabsContent value="shipments" className="space-y-6">
             <div className="grid gap-6">
               {shipments.map((shipment) => (

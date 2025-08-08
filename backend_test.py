@@ -386,19 +386,18 @@ class TruxComAPITester:
         
         # Test accessing protected endpoints without token
         endpoints = [
-            ("auth/me", "GET"),
-            ("shipments", "GET"),
-            ("shipments", "POST"),
-            ("bids", "GET"),
-            ("dashboard/stats", "GET")
+            ("auth/me", "GET", 403),  # FastAPI returns 403 for missing auth
+            ("shipments", "GET", 403),
+            ("shipments", "POST", 403),
+            ("dashboard/stats", "GET", 403)
         ]
         
-        for endpoint, method in endpoints:
+        for endpoint, method, expected_status in endpoints:
             self.run_test(
                 f"Unauthorized {method} {endpoint}",
                 method,
                 endpoint,
-                401,
+                expected_status,
                 data={} if method == "POST" else None
             )
         

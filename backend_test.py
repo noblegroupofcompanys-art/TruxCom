@@ -1153,32 +1153,14 @@ class TruxComAPITester:
             headers={"Authorization": f"Bearer {admin_token}"}
         )
         
-        # Test create pricing template
-        template_data = {
-            "service_type": "insurance",
-            "template_name": "Standard Insurance Pricing",
-            "pricing_structure": {
-                "base_rate": 100.0,
-                "risk_multipliers": {
-                    "low_risk": 0.8,
-                    "medium_risk": 1.0,
-                    "high_risk": 1.5
-                },
-                "coverage_tiers": {
-                    "basic": 1.0,
-                    "premium": 1.5,
-                    "enterprise": 2.0
-                }
-            },
-            "currency": "USD"
-        }
+        # Test create pricing template (using query parameters)
+        template_params = "service_type=insurance&template_name=Standard Insurance Pricing&currency=USD"
         
         success, template_response = self.run_test(
             "Create Pricing Template",
             "POST",
-            "admin/pricing/templates",
+            f"admin/pricing/templates?{template_params}",
             200,
-            data=template_data,
             headers={"Authorization": f"Bearer {admin_token}"}
         )
         
